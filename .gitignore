@@ -1,0 +1,33 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dependencies
+node_modules/
+.npm
+frontend/node_modules/
+.venv/
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Expo/React Native
+.expo/
+dist/
+web-build/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment & Secrets
+.env
+.env.local
+backend/.env
+
+# Local data
+*.log
+*.sqlite
+backend/data/

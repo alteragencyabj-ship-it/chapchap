@@ -1,0 +1,409 @@
+diff --git a/.emergent/emergent.yml b/.emergent/emergent.yml
+index 1de5173..5cae72d 100644
+--- a/.emergent/emergent.yml
++++ b/.emergent/emergent.yml
+@@ -1,5 +1,5 @@
+ {
+   "env_image_name": "expo_mongo_base_image_cloud_arm:release-26112025-1",
+   "job_id": "b22567a4-5cf3-49df-adfa-643be846d61e",
+-  "created_at": "2025-11-29T21:10:26.461522+00:00Z"
++  "created_at": "2025-11-29T21:14:26.227453+00:00Z"
+ }
+diff --git a/.gitignore b/.gitignore
+index 8bfe2e2..a21bffd 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -81,3 +81,7 @@ android-sdk/ -e
+ # Environment files
+ *.env
+ *.env.*
++-e 
++# Environment files
++*.env
++*.env.*
+diff --git a/frontend/app/select-service.tsx b/frontend/app/select-service.tsx
+index 439cbfb..4557b2c 100644
+--- a/frontend/app/select-service.tsx
++++ b/frontend/app/select-service.tsx
+@@ -25,21 +25,6 @@ export default function SelectService() {
+   const { categoryId, categoryName } = useLocalSearchParams();
+   
+   const services: Service[] = SERVICES_DATA[categoryId as keyof typeof SERVICES_DATA] || [];
+-  
+-  // Group services by subcategory if they have one
+-  const groupedServices: { [key: string]: Service[] } = {};
+-  const ungroupedServices: Service[] = [];
+-  
+-  services.forEach((service) => {
+-    if (service.category) {
+-      if (!groupedServices[service.category]) {
+-        groupedServices[service.category] = [];
+-      }
+-      groupedServices[service.category].push(service);
+-    } else {
+-      ungroupedServices.push(service);
+-    }
+-  });
+ 
+   const handleServiceSelect = (service: Service) => {
+     router.push({
+@@ -53,55 +38,68 @@ export default function SelectService() {
+     });
+   };
+ 
++  // Fonction pour obtenir une icône basée sur le nom du service
++  const getServiceIcon = (serviceName: string): any => {
++    const name = serviceName.toLowerCase();
++    if (name.includes('nettoyage') || name.includes('ménage')) return 'sparkles';
++    if (name.includes('fuite') || name.includes('robinet') || name.includes('lavabo')) return 'water';
++    if (name.includes('wc') || name.includes('débouchage')) return 'construct';
++    if (name.includes('électr') || name.includes('ampoule') || name.includes('prise')) return 'flash';
++    if (name.includes('tv') || name.includes('frigo') || name.includes('clim')) return 'desktop';
++    if (name.includes('meuble') || name.includes('fixer') || name.includes('monter')) return 'hammer';
++    if (name.includes('roue') || name.includes('batterie') || name.includes('véhicule')) return 'car';
++    if (name.includes('laver') || name.includes('repassage')) return 'shirt';
++    if (name.includes('consultation')) return 'people';
++    return 'build';
++  };
++
+   return (
+     <SafeAreaView style={styles.container}>
+-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
++      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+       
+       <View style={styles.header}>
+-        <TouchableOpacity onPress={() => router.back()}>
+-          <Ionicons name="arrow-back" size={24} color={COLORS.dark} />
++        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
++          <Ionicons name="arrow-back" size={24} color={COLORS.white} />
+         </TouchableOpacity>
+         <Text style={styles.headerTitle}>{categoryName}</Text>
+-        <View style={{ width: 24 }} />
+       </View>
+ 
+-      <ScrollView contentContainerStyle={styles.content}>
+-        <Text style={styles.subtitle}>Choisissez le service dont vous avez besoin</Text>
+-
+-        {/* Ungrouped services */}
+-        {ungroupedServices.map((service) => (
++      <ScrollView 
++        contentContainerStyle={styles.bubblesContainer}
++        showsVerticalScrollIndicator={false}
++      >
++        {services.map((service, index) => (
+           <TouchableOpacity
+             key={service.id}
+-            style={styles.serviceCard}
++            style={[
++              styles.bubble,
++              // Alterne les positions pour créer un effet décalé
++              index % 3 === 0 && styles.bubbleLeft,
++              index % 3 === 1 && styles.bubbleCenter,
++              index % 3 === 2 && styles.bubbleRight,
++            ]}
+             onPress={() => handleServiceSelect(service)}
++            activeOpacity={0.8}
+           >
+-            <View style={styles.serviceInfo}>
+-              <Text style={styles.serviceName}>{service.name}</Text>
+-              <Text style={styles.servicePrice}>{service.price} {service.unit}</Text>
++            <View style={styles.bubbleContent}>
++              <View style={styles.iconContainer}>
++                <Ionicons 
++                  name={getServiceIcon(service.name)} 
++                  size={32} 
++                  color={COLORS.primary} 
++                />
++              </View>
++              <Text style={styles.bubbleText} numberOfLines={2}>
++                {service.name}
++              </Text>
++              {service.price && (
++                <Text style={styles.bubblePrice}>
++                  {service.price} {service.unit}
++                </Text>
++              )}
+             </View>
+-            <Ionicons name="chevron-forward" size={20} color={COLORS.textLight} />
+           </TouchableOpacity>
+         ))}
+-
+-        {/* Grouped services */}
+-        {Object.entries(groupedServices).map(([category, categoryServices]) => (
+-          <View key={category} style={styles.categorySection}>
+-            <Text style={styles.categoryTitle}>{category}</Text>
+-            {categoryServices.map((service) => (
+-              <TouchableOpacity
+-                key={service.id}
+-                style={styles.serviceCard}
+-                onPress={() => handleServiceSelect(service)}
+-              >
+-                <View style={styles.serviceInfo}>
+-                  <Text style={styles.serviceName}>{service.name}</Text>
+-                  <Text style={styles.servicePrice}>{service.price} {service.unit}</Text>
+-                </View>
+-                <Ionicons name="chevron-forward" size={20} color={COLORS.textLight} />
+-              </TouchableOpacity>
+-            ))}
+-          </View>
+-        ))}
+       </ScrollView>
+     </SafeAreaView>
+   );
+@@ -110,61 +108,87 @@ export default function SelectService() {
+ const styles = StyleSheet.create({
+   container: {
+     flex: 1,
+-    backgroundColor: COLORS.white,
++    backgroundColor: COLORS.primary,
+   },
+   header: {
+     flexDirection: 'row',
+     alignItems: 'center',
+-    justifyContent: 'space-between',
+-    padding: 20,
+-    borderBottomWidth: 1,
+-    borderBottomColor: COLORS.border,
++    paddingHorizontal: 20,
++    paddingTop: 20,
++    paddingBottom: 30,
++    backgroundColor: COLORS.primary,
++  },
++  backButton: {
++    padding: 8,
+   },
+   headerTitle: {
+-    fontSize: 20,
++    fontSize: 24,
+     fontWeight: 'bold',
+-    color: COLORS.dark,
++    color: COLORS.white,
++    marginLeft: 16,
++    flex: 1,
+   },
+-  content: {
++  bubblesContainer: {
+     padding: 20,
++    paddingTop: 10,
++    flexGrow: 1,
+   },
+-  subtitle: {
+-    fontSize: 16,
+-    color: COLORS.textLight,
+-    marginBottom: 20,
++  bubble: {
++    backgroundColor: COLORS.white,
++    borderRadius: 25,
++    marginBottom: 16,
++    shadowColor: '#000',
++    shadowOffset: {
++      width: 0,
++      height: 2,
++    },
++    shadowOpacity: 0.1,
++    shadowRadius: 8,
++    elevation: 4,
+   },
+-  categorySection: {
+-    marginBottom: 24,
++  bubbleLeft: {
++    alignSelf: 'flex-start',
++    marginRight: '30%',
++    paddingHorizontal: 20,
++    paddingVertical: 16,
+   },
+-  categoryTitle: {
+-    fontSize: 18,
+-    fontWeight: 'bold',
+-    color: COLORS.primary,
+-    marginBottom: 12,
++  bubbleCenter: {
++    alignSelf: 'center',
++    marginHorizontal: '15%',
++    paddingHorizontal: 24,
++    paddingVertical: 18,
+   },
+-  serviceCard: {
+-    flexDirection: 'row',
++  bubbleRight: {
++    alignSelf: 'flex-end',
++    marginLeft: '30%',
++    paddingHorizontal: 20,
++    paddingVertical: 16,
++  },
++  bubbleContent: {
+     alignItems: 'center',
+-    justifyContent: 'space-between',
+-    backgroundColor: COLORS.white,
+-    borderWidth: 1,
+-    borderColor: COLORS.border,
+-    borderRadius: 12,
+-    padding: 16,
+-    marginBottom: 12,
++    justifyContent: 'center',
+   },
+-  serviceInfo: {
+-    flex: 1,
++  iconContainer: {
++    width: 60,
++    height: 60,
++    borderRadius: 30,
++    backgroundColor: `${COLORS.primary}15`,
++    alignItems: 'center',
++    justifyContent: 'center',
++    marginBottom: 12,
+   },
+-  serviceName: {
+-    fontSize: 16,
+-    fontWeight: '500',
++  bubbleText: {
++    fontSize: 14,
++    fontWeight: '600',
+     color: COLORS.dark,
+-    marginBottom: 4,
++    textAlign: 'center',
++    marginBottom: 8,
++    lineHeight: 18,
+   },
+-  servicePrice: {
+-    fontSize: 18,
++  bubblePrice: {
++    fontSize: 16,
+     fontWeight: 'bold',
+-    color: COLORS.secondary,
++    color: COLORS.primary,
++    textAlign: 'center',
+   },
+ });
+\ No newline at end of file
+diff --git a/model.patch b/model.patch
+index 450b751..dd174c8 100644
+--- a/model.patch
++++ b/model.patch
+@@ -1,126 +0,0 @@
+-diff --git a/frontend/src/config/constants.ts b/frontend/src/config/constants.ts
+-index 56b8545..5cfa5f4 100644
+---- a/frontend/src/config/constants.ts
+-+++ b/frontend/src/config/constants.ts
+-@@ -26,6 +26,7 @@ export const SERVICES_DATA = {
+-     { id: 'm4', name: 'Lavage vitres (par fenêtre)', price: '1000', unit: 'FCFA/fenêtre' },
+-     { id: 'm5', name: 'Balcon / terrasse', price: '3000-5000', unit: 'FCFA' },
+-     { id: 'm6', name: 'Nettoyage après petit événement (<20 pers.)', price: '15000-20000', unit: 'FCFA' },
+-+    { id: 'm7', name: 'Consultation', price: '', unit: '' },
+-   ],
+-   plomberie: [
+-     { id: 'p1', name: 'Réparation fuite évier/lavabo', price: '5000-7000', unit: 'FCFA' },
+-@@ -36,6 +37,7 @@ export const SERVICES_DATA = {
+-     { id: 'p6', name: 'Installation douchette', price: '5000-8000', unit: 'FCFA' },
+-     { id: 'p7', name: 'Installation lavabo simple', price: '10000-15000', unit: 'FCFA' },
+-     { id: 'p8', name: 'Rebrancher machine à laver', price: '4000-6000', unit: 'FCFA' },
+-+    { id: 'p9', name: 'Consultation', price: '', unit: '' },
+-   ],
+-   electricite: [
+-     { id: 'e1', name: 'Remplacement ampoule', price: '1000', unit: 'FCFA', category: 'Basique' },
+-@@ -53,6 +55,7 @@ export const SERVICES_DATA = {
+-     { id: 'e13', name: 'Réparation micro-ondes', price: '7000-12000', unit: 'FCFA', category: 'Réparation Électro-Ménagers' },
+-     { id: 'e14', name: 'Réparation clim (petite panne)', price: '10000-15000', unit: 'FCFA', category: 'Réparation Électro-Ménagers' },
+-     { id: 'e15', name: 'Nettoyage/entretien clim', price: '10000-15000', unit: 'FCFA', category: 'Réparation Électro-Ménagers' },
+-+    { id: 'e16', name: 'Consultation', price: '', unit: '' },
+-   ],
+-   bricolage: [
+-     { id: 'b1', name: 'Fixer tringle à rideaux', price: '3000-5000', unit: 'FCFA' },
+-@@ -61,6 +64,7 @@ export const SERVICES_DATA = {
+-     { id: 'b4', name: 'Monter meuble simple', price: '3000-6000', unit: 'FCFA' },
+-     { id: 'b5', name: 'Monter meuble complexe (armoire)', price: '7000-12000', unit: 'FCFA' },
+-     { id: 'b6', name: 'Accrocher tableau/miroir', price: '1500-3000', unit: 'FCFA' },
+-+    { id: 'b7', name: 'Consultation', price: '', unit: '' },
+-   ],
+-   mecanique: [
+-     { id: 'mc1', name: 'Changer une roue', price: '3000-5000', unit: 'FCFA' },
+-@@ -70,6 +74,7 @@ export const SERVICES_DATA = {
+-     { id: 'mc5', name: 'Regonflage pneus', price: '1000-2000', unit: 'FCFA' },
+-     { id: 'mc6', name: 'Livraison carburant (5L)', price: '3000', unit: 'FCFA + carburant' },
+-     { id: 'mc7', name: 'Nettoyage intérieur rapide', price: '5000-8000', unit: 'FCFA' },
+-+    { id: 'mc8', name: 'Consultation', price: '', unit: '' },
+-   ],
+-   taches_quotidiennes: [
+-     { id: 'tq1', name: 'Laver habits', price: '3000-5000', unit: 'FCFA', category: 'Lessive' },
+-@@ -79,12 +84,14 @@ export const SERVICES_DATA = {
+-     { id: 'tq5', name: 'Déposer un document', price: '2000-4000', unit: 'FCFA', category: 'Aide simple' },
+-     { id: 'tq6', name: 'Aide rangement maison (1h)', price: '3000-5000', unit: 'FCFA', category: 'Aide simple' },
+-     { id: 'tq7', name: 'Aide cuisine simple', price: '2000-4000', unit: 'FCFA', category: 'Aide simple' },
+-+    { id: 'tq8', name: 'Consultation', price: '', unit: '' },
+-   ],
+-   climatisation: [
+-     { id: 'c1', name: 'Nettoyage/entretien clim', price: '10000-15000', unit: 'FCFA' },
+-     { id: 'c2', name: 'Recharge gaz', price: '15000-25000', unit: 'FCFA' },
+-     { id: 'c3', name: 'Installation clim', price: '20000-30000', unit: 'FCFA' },
+-     { id: 'c4', name: 'Dépose clim', price: '10000-15000', unit: 'FCFA' },
+-+    { id: 'c5', name: 'Consultation', price: '', unit: '' },
+-   ],
+- };
+- 
+-diff --git a/model.patch b/model.patch
+-index e83ae12..e69de29 100644
+---- a/model.patch
+-+++ b/model.patch
+-@@ -1,62 +0,0 @@
+--diff --git a/frontend/app/(tabs)/home.tsx b/frontend/app/(tabs)/home.tsx
+--index 000bc9b..1cd0329 100644
+----- a/frontend/app/(tabs)/home.tsx
+--+++ b/frontend/app/(tabs)/home.tsx
+--@@ -11,7 +11,7 @@ import {
+-- import { useRouter } from 'expo-router';
+-- import { Ionicons } from '@expo/vector-icons';
+-- import { useAuthStore } from '../../src/store/authStore';
+---import { SERVICE_TYPES, COLORS } from '../../src/config/constants';
+--+import { SERVICE_CATEGORIES, COLORS } from '../../src/config/constants';
+-- 
+-- export default function Home() {
+--   const router = useRouter();
+--@@ -33,7 +33,7 @@ export default function Home() {
+--           <Text style={styles.sectionTitle}>De quel service avez-vous besoin ?</Text>
+--           
+--           <View style={styles.servicesGrid}>
+---            {SERVICE_TYPES.map((service) => (
+--+            {SERVICE_CATEGORIES.map((service) => (
+--               <TouchableOpacity
+--                 key={service.id}
+--                 style={styles.serviceCard}
+--diff --git a/model.patch b/model.patch
+--index 377dde8..e69de29 100644
+----- a/model.patch
+--+++ b/model.patch
+--@@ -1,35 +0,0 @@
+---diff --git a/frontend/app/(auth)/welcome.tsx b/frontend/app/(auth)/welcome.tsx
+---index 2f95067..821cbb5 100644
+------ a/frontend/app/(auth)/welcome.tsx
+---+++ b/frontend/app/(auth)/welcome.tsx
+---@@ -47,7 +47,7 @@ export default function Welcome() {
+---             onPress={() => router.push('/(auth)/demo')}
+---           >
+---             <Ionicons name="eye-outline" size={20} color={COLORS.white} />
+----            <Text style={styles.demoButtonText}>Découvrir l'app</Text>
+---+            <Text style={styles.demoButtonText}>Découvrir l&apos;app</Text>
+---           </TouchableOpacity>
+---         </View>
+---       </View>
+---@@ -112,4 +112,20 @@ const styles = StyleSheet.create({
+---     fontSize: 16,
+---     fontWeight: '600',
+---   },
+---+  demoButton: {
+---+    flexDirection: 'row',
+---+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+---+    paddingVertical: 16,
+---+    borderRadius: 12,
+---+    alignItems: 'center',
+---+    justifyContent: 'center',
+---+    gap: 8,
+---+    borderWidth: 1,
+---+    borderColor: 'rgba(255, 255, 255, 0.3)',
+---+  },
+---+  demoButtonText: {
+---+    color: COLORS.white,
+---+    fontSize: 16,
+---+    fontWeight: '600',
+---+  },
+--- });
+---\ No newline at end of file
