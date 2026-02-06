@@ -1,7 +1,11 @@
 import Constants from 'expo-constants';
 
-// Use your local IP so your phone can reach the backend
-export const API_BASE_URL = 'http://192.168.1.69:8002';
+// Use your local IP so your phone can reach the backend.
+// You can override this at build time via EXPO_PUBLIC_API_BASE_URL.
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_API_BASE_URL ||
+  'http://192.168.1.69:8001';
 
 export const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY || 
   Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_MAPS_KEY || 
@@ -93,6 +97,9 @@ export const SERVICES_DATA = {
     { id: 'c5', name: 'Consultation', price: '', unit: '' },
   ],
 };
+
+// Flat list of service type IDs for validation/lookup
+export const SERVICE_TYPES = SERVICE_CATEGORIES.map(c => c.id);
 
 export const COLORS = {
   primary: '#FF7A00',        // Orange ChapChap - énergie, rapidité

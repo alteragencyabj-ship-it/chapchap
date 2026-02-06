@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from bson import ObjectId
+from enum import Enum
 
 class PyObjectId(ObjectId):
     @classmethod
@@ -22,7 +23,26 @@ class GeoLocation(BaseModel):
     type: str = "Point"
     coordinates: List[float]  # [longitude, latitude]
 
-# User Models
+# =====================================================
+# REQUEST STATUS ENUM
+# =====================================================
+
+class RequestStatus(str, Enum):
+    CREATED = "created"
+    PUBLISHED = "published"
+    ACCEPTED = "accepted"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CONFIRMED = "confirmed"
+    REFUSED = "refused"
+    CANCELLED = "cancelled"
+    DISPUTED = "disputed"
+    RESOLVED = "resolved"
+
+# =====================================================
+# USER MODELS
+# =====================================================
+
 class UserBase(BaseModel):
     name: str
     email: EmailStr
@@ -66,12 +86,27 @@ class User(UserBase):
     delai_moyen_reponse: Optional[str] = None
     statut: Optional[str] = None
     distance: Optional[float] = None
+    # Admin fields
+    admin_role: Optional[str] = None  # super_admin, staff, finance, support
+    permissions: Optional[List[str]] = None  # Custom permissions override
+    is_active: bool = True
+    status: Optional[str] = "active"  # active, suspended, blocked
+    status_reason: Optional[str] = None
+    onboarded_by: Optional[str] = None  # Admin user_id who onboarded
+    interview_notes: Optional[str] = None
+    # Push notification
+    push_token: Optional[str] = None  # Expo push token
+    notification_preferences: Optional[Dict[str, Any]] = None
+    last_seen_at: Optional[datetime] = None
 
     class Config:
         populate_by_name = True
         json_encoders = {ObjectId: str}
 
-# Booking Models (New for checkout)
+# =====================================================
+# BOOKING MODELS (Legacy -- aliased to requests)
+# =====================================================
+
 class BookingCreate(BaseModel):
     artisan_id: str
     service_id: str
@@ -97,39 +132,84 @@ class Booking(BookingCreate):
         populate_by_name = True
         json_encoders = {ObjectId: str}
 
-# Service Request Models
+# =====================================================
+# SERVICE REQUEST MODELS (Enhanced with state machine)
+# =====================================================
+
 class ServiceRequestCreate(BaseModel):
-    service_type: str  # peinture, plomberie, électricité, etc.
+    service_type: str  # peinture, plomberie, electricite, etc.
     description: str
     photos: List[str] = []  # base64 images
     address: str
-    location: GeoLocation
+    # Location can be missing for legacy documents (e.g. migrated bookings).
+    location: Optional[GeoLocation] = None
     budget: Optional[float] = None
+    artisan_id: Optional[str] = None  # Targeted artisan (new: client picks artisan)
+    # Booking-compat fields
+    service_name: Optional[str] = None
+    service_price: Optional[str] = None
+    phone: Optional[str] = None
+    payment_method: Optional[str] = None
 
 class ServiceRequest(ServiceRequestCreate):
     id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
     client_id: str
-    status: str = "pending"  # pending, assigned, in_progress, completed, cancelled
+    status: str = "published"
     assigned_artisan_id: Optional[str] = None
+    status_history: List[Dict[str, Any]] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    accepted_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    confirmed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancel_reason: Optional[str] = None
+    refuse_reason: Optional[str] = None
+    admin_note: Optional[str] = None
 
     class Config:
         populate_by_name = True
         json_encoders = {ObjectId: str}
 
-# Message Models
-class MessageCreate(BaseModel):
+# =====================================================
+# CONVERSATION MODELS
+# =====================================================
+
+class ConversationCreate(BaseModel):
     request_id: str
-    receiver_id: str
+    participants: List[str]  # [client_id, artisan_id]
+
+class Conversation(BaseModel):
+    id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
+    request_id: str
+    participants: List[str]  # [client_id, artisan_id]
+    last_message: Optional[str] = None
+    last_message_at: Optional[datetime] = None
+    unread_count: Dict[str, int] = {}  # user_id -> unread count
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str}
+
+# =====================================================
+# MESSAGE MODELS
+# =====================================================
+
+class MessageCreate(BaseModel):
+    request_id: Optional[str] = None
+    receiver_id: Optional[str] = None
+    conversation_id: Optional[str] = None
     message: str
 
 class Message(BaseModel):
     id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
-    request_id: str
+    request_id: Optional[str] = None
+    conversation_id: Optional[str] = None
     sender_id: str
     receiver_id: str
     message: str
+    message_type: str = "user"  # user, system
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     read: bool = False
 
@@ -137,7 +217,141 @@ class Message(BaseModel):
         populate_by_name = True
         json_encoders = {ObjectId: str}
 
-# Rating Models
+# =====================================================
+# NOTIFICATION MODELS
+# =====================================================
+
+class Notification(BaseModel):
+    id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
+    recipient_id: str
+    type: str  # request_accepted, request_refused, new_message, etc.
+    title: str
+    body: str
+    data: Optional[Dict[str, Any]] = None  # Payload for deep linking
+    read: bool = False
+    channels: List[str] = ["in_app"]  # in_app, push, email
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str}
+
+class NotificationPreferences(BaseModel):
+    push_enabled: bool = True
+    email_enabled: bool = False
+    quiet_hours_start: Optional[int] = None  # Hour (0-23)
+    quiet_hours_end: Optional[int] = None
+    disabled_types: List[str] = []  # Notification types to mute
+
+class RegisterTokenRequest(BaseModel):
+    token: str  # Expo push token
+
+# =====================================================
+# NOTIFICATION TEMPLATE MODELS
+# =====================================================
+
+class NotificationTemplateCreate(BaseModel):
+    key: str  # e.g. "request_accepted"
+    title_template: str  # e.g. "{artisan_name} a accepte votre demande"
+    body_template: str
+    channels: List[str] = ["in_app", "push"]
+    priority: str = "normal"  # low, normal, high
+
+# =====================================================
+# DISPUTE MODELS
+# =====================================================
+
+class DisputeCreate(BaseModel):
+    request_id: str
+    reason: str
+    category: Optional[str] = None  # quality, delay, no_show, pricing, other
+
+class DisputeMessage(BaseModel):
+    message: str
+
+class DisputeResolve(BaseModel):
+    outcome: str  # refund, partial_refund, dismissed, warning
+    resolution_note: str
+    refund_amount: Optional[float] = None
+
+class Dispute(BaseModel):
+    id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
+    request_id: str
+    opened_by: str  # user_id
+    reason: str
+    category: Optional[str] = None
+    status: str = "open"  # open, investigating, resolved, closed
+    assigned_admin: Optional[str] = None
+    messages: List[Dict[str, Any]] = []  # [{sender_id, message, timestamp, is_admin}]
+    outcome: Optional[str] = None
+    resolution_note: Optional[str] = None
+    refund_amount: Optional[float] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    resolved_at: Optional[datetime] = None
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str}
+
+# =====================================================
+# ADMIN MODELS
+# =====================================================
+
+class AdminArtisanCreate(BaseModel):
+    """Admin-only artisan creation (onboarding after physical interview)."""
+    name: str
+    email: EmailStr
+    phone: str
+    specialties: List[str]
+    experience: Optional[str] = None
+    city: Optional[str] = None
+    quartier: Optional[str] = None
+    address: Optional[str] = None
+    zone: Optional[str] = None
+    id_document: Optional[str] = None
+    photo: Optional[str] = None
+    interview_notes: Optional[str] = None
+    password: Optional[str] = None  # Temporary password for the artisan
+
+class StatusChangeRequest(BaseModel):
+    status: str  # active, suspended, blocked
+    reason: str
+
+class CreditAdjustment(BaseModel):
+    credits: Optional[int] = None  # Set credit_remaining
+    commission_due: Optional[float] = None  # Set commission_due
+    reason: str
+
+# =====================================================
+# CAMPAIGN MODELS
+# =====================================================
+
+class CampaignCreate(BaseModel):
+    title: str
+    body: str
+    target: str  # all, clients, artisans, segment
+    segment_filter: Optional[Dict[str, Any]] = None  # MongoDB query for segment
+    channels: List[str] = ["push", "in_app"]
+    scheduled_at: Optional[datetime] = None  # None = immediate
+
+# =====================================================
+# REQUEST ACTION MODELS
+# =====================================================
+
+class RequestRefuse(BaseModel):
+    reason: Optional[str] = None
+
+class RequestCancel(BaseModel):
+    reason: Optional[str] = None
+
+class RequestDispute(BaseModel):
+    reason: str
+    category: Optional[str] = None
+
+# =====================================================
+# RATING MODELS
+# =====================================================
+
 class RatingCreate(BaseModel):
     request_id: str
     artisan_id: str
@@ -153,7 +367,10 @@ class Rating(RatingCreate):
         populate_by_name = True
         json_encoders = {ObjectId: str}
 
-# Auth Models
+# =====================================================
+# AUTH MODELS
+# =====================================================
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
@@ -164,30 +381,28 @@ class TokenResponse(BaseModel):
     user: User
 
 # =====================================================
-# CREDIT SYSTEM - Système de Crédit Artisan
+# CREDIT SYSTEM - Systeme de Credit Artisan
 # =====================================================
 
 class ArtisanLevel(BaseModel):
-    """Niveau de l'artisan qui détermine son crédit max"""
-    name: str  # bronze, silver, gold, diamond
-    credit_max: int  # 3, 5, 10, 15
-    min_missions: int  # 0, 20, 50, 100
-    min_rating: float  # 0, 4.0, 4.5, 4.5
-    commission_rate: float  # 0.15 (15%)
+    name: str
+    credit_max: int
+    min_missions: int
+    min_rating: float
+    commission_rate: float
 
 class ArtisanCredit(BaseModel):
-    """État du crédit d'un artisan"""
     id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
     artisan_id: str
-    level: str = "bronze"  # bronze, silver, gold, diamond
-    credit_remaining: int = 3  # Missions disponibles
+    level: str = "bronze"
+    credit_remaining: int = 3
     credit_max: int = 3
-    commission_due: float = 0.0  # Montant dû à la société (FCFA)
-    commission_rate: float = 0.15  # 15% par défaut
+    commission_due: float = 0.0
+    commission_rate: float = 0.15
     is_blocked: bool = False
     blocked_at: Optional[datetime] = None
-    total_earned: float = 0.0  # Total gagné par l'artisan
-    total_paid: float = 0.0  # Total reversé à la société
+    total_earned: float = 0.0
+    total_paid: float = 0.0
     last_payment_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -197,14 +412,13 @@ class ArtisanCredit(BaseModel):
         json_encoders = {ObjectId: str}
 
 class CommissionPayment(BaseModel):
-    """Historique des paiements de commission"""
     id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
     artisan_id: str
-    amount: float  # Montant payé (FCFA)
-    payment_method: str  # wave, orange_money, mtn, cash
-    transaction_id: Optional[str] = None  # ID de la transaction Mobile Money
-    credits_unlocked: int  # Nombre de crédits débloqués
-    status: str = "pending"  # pending, completed, failed
+    amount: float
+    payment_method: str
+    transaction_id: Optional[str] = None
+    credits_unlocked: int
+    status: str = "pending"
     created_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
 
@@ -213,21 +427,19 @@ class CommissionPayment(BaseModel):
         json_encoders = {ObjectId: str}
 
 class CommissionPaymentCreate(BaseModel):
-    """Pour créer un paiement de commission"""
     amount: float
-    payment_method: str  # wave, orange_money, mtn, cash
+    payment_method: str
 
 class MissionTransaction(BaseModel):
-    """Historique des transactions par mission"""
     id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
     artisan_id: str
     booking_id: str
     client_id: str
     service_name: str
-    amount: float  # Montant du service (FCFA)
-    commission: float  # Commission prélevée (FCFA)
-    artisan_earning: float  # Ce que l'artisan garde (FCFA)
-    status: str = "completed"  # completed, refunded
+    amount: float
+    commission: float
+    artisan_earning: float
+    status: str = "completed"
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:
@@ -235,7 +447,6 @@ class MissionTransaction(BaseModel):
         json_encoders = {ObjectId: str}
 
 class CreditStatus(BaseModel):
-    """Réponse API pour le statut du crédit"""
     artisan_id: str
     level: str
     credit_remaining: int

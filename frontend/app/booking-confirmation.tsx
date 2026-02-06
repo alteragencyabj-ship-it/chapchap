@@ -10,7 +10,6 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../src/config/constants';
-import LottieView from 'lottie-react-native';
 
 export default function BookingConfirmation() {
   const router = useRouter();
@@ -71,7 +70,7 @@ export default function BookingConfirmation() {
         <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => router.push('/(tabs)/requests')}
+            onPress={() => router.push('/(tabs)/my-requests')}
             activeOpacity={0.8}
           >
             <Ionicons name="list" size={20} color={COLORS.white} />

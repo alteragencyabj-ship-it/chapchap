@@ -1,223 +1,134 @@
-# 🏗️ Artisan Connect - Application Mobile
+# ChapChap (Artisan Connect)
 
-## 📱 Description
+Marketplace mobile connectant clients et artisans qualifies en Cote d'Ivoire.
 
-**Artisan Connect** est une application mobile qui met en relation des clients avec des artisans qualifiés (peintres, plombiers, électriciens, etc.) dans leur région.
-
-## ✅ Fonctionnalités Implémentées
-
-### Pour les Clients :
-- ✅ Inscription et connexion
-- ✅ Navigation intuitive avec onglets
-- ✅ Page d'accueil avec liste des services
-- ✅ Création de demande (wizard multi-étapes) :
-  - Sélection du type de service
-  - Description détaillée
-  - Ajout de photos (caméra/galerie)
-  - Localisation GPS automatique
-  - Budget estimatif (optionnel)
-- ✅ Liste de mes demandes avec statuts
-- ✅ Détails d'une demande
-- ✅ Profil utilisateur
-
-### Pour les Artisans :
-- ✅ Inscription avec spécialités
-- ✅ Liste des missions disponibles à proximité
-- ✅ Acceptation de missions
-- ✅ Mes missions en cours
-- ✅ Profil avec notes et statistiques
-
-### Backend API :
-- ✅ API REST complète (FastAPI)
-- ✅ Authentification (JWT + Firebase Admin SDK)
-- ✅ Gestion des utilisateurs
-- ✅ CRUD demandes de service
-- ✅ Système de notation
-- ✅ Géolocalisation avec MongoDB GeoJSON
-- ✅ Socket.IO pour chat temps réel (prêt)
-- ✅ Dashboard admin (API)
-
-## 🛠️ Stack Technique
-
-### Frontend :
-- **Expo** - React Native
-- **expo-router** - Navigation file-based
-- **Zustand** - State management
-- **Axios** - Requêtes HTTP
-- **Socket.io-client** - Chat temps réel
-- **expo-location** - Géolocalisation
-- **expo-image-picker** - Photos/Caméra
-- **date-fns** - Formatage des dates
-
-### Backend :
-- **FastAPI** - Framework Python
-- **Motor** - Driver MongoDB async
-- **Socket.IO** - WebSockets
-- **Firebase Admin SDK** - Authentification
-- **emergentintegrations** - OpenAI GPT
-- **Pydantic** - Validation des données
-
-### Base de données :
-- **MongoDB** avec indexes GeoSpatial
-
-## 🚀 URLs d'Accès
-
-- **Backend API** : https://artisan-connect.cluster.emergent.vc/api
-- **Socket.IO** : https://artisan-connect.cluster.emergent.vc/socket.io/
-- **Frontend Web** : https://artisan-connect.cluster.emergent.vc
-- **Expo Preview** : Scanner le QR code dans les logs
-
-## 📋 Structure du Projet
-
-```
-/app
-├── backend/
-│   ├── server.py          # Serveur FastAPI principal
-│   ├── database.py        # Configuration MongoDB
-│   ├── models.py          # Modèles Pydantic
-│   ├── auth.py            # Authentification
-│   ├── socketio_server.py # Chat temps réel
-│   └── .env               # Variables d'environnement
-├── frontend/
-│   ├── app/
-│   │   ├── (auth)/        # Écrans d'authentification
-│   │   │   ├── welcome.tsx
-│   │   │   ├── login.tsx
-│   │   │   └── register.tsx
-│   │   ├── (tabs)/        # Écrans principaux avec tabs
-│   │   │   ├── home.tsx              # Client: Liste services
-│   │   │   ├── my-requests.tsx       # Client: Mes demandes
-│   │   │   ├── artisan-home.tsx      # Artisan: Missions dispo
-│   │   │   ├── my-missions.tsx       # Artisan: Mes missions
-│   │   │   ├── messages.tsx          # Chat (tous)
-│   │   │   └── profile.tsx           # Profil (tous)
-│   │   ├── create-request.tsx        # Créer une demande
-│   │   ├── request-details.tsx       # Détails demande
-│   │   └── index.tsx                 # Point d'entrée
-│   ├── src/
-│   │   ├── config/
-│   │   │   └── constants.ts          # Constantes app
-│   │   ├── services/
-│   │   │   ├── api.ts                # Client HTTP
-│   │   │   └── socket.ts             # Socket.IO client
-│   │   └── store/
-│   │       └── authStore.ts          # State auth
-│   └── app.json           # Configuration Expo
-└── README.md
-```
-
-## 🎨 Design
-
-- **Style** : Moderne, minimaliste, clean (inspiré Apple)
-- **Navigation** : Bottom tabs adaptés au rôle (Client/Artisan)
-- **Couleurs** :
-  - Primary: #2563eb (Bleu)
-  - Secondary: #10b981 (Vert)
-  - Danger: #ef4444 (Rouge)
-  - Warning: #f59e0b (Orange)
-
-## 📱 Tester l'Application
-
-### Option 1 : Web Preview
-Ouvrez simplement l'URL du frontend dans votre navigateur.
-
-### Option 2 : Expo Go (Mobile)
-1. Téléchargez **Expo Go** sur iOS/Android
-2. Scannez le QR code affiché dans les logs
-3. L'application s'ouvrira sur votre téléphone
-
-### Comptes de Test
-
-**Client :**
-```
-Email: client@test.com
-Password: test123
-```
-
-**Artisan :**
-```
-Email: artisan@test.com
-Password: test123
-```
-
-*(À créer via l'écran d'inscription)*
-
-## 🔧 Configuration des Clés API
-
-### Firebase (Authentification)
-1. Créez un projet sur https://console.firebase.google.com
-2. Téléchargez le fichier de clé privée (Service Account)
-3. Remplacez `/app/backend/firebase-admin-test.json`
-4. Redémarrez le backend
-
-### Google Maps (Optionnel)
-1. Activez l'API sur https://console.cloud.google.com
-2. Copiez votre clé API
-3. Modifiez `/app/frontend/.env` :
-   ```
-   EXPO_PUBLIC_GOOGLE_MAPS_KEY=VOTRE_CLE_ICI
-   ```
-4. Modifiez `/app/frontend/app.json` (sections `ios.config` et `android.config`)
-
-### Emergent LLM Key
-✅ Déjà configurée : `sk-emergent-b19BbBdB4049e45Ce2`
-
-## 📊 Collections MongoDB
-
-### 1. `users`
-- Clients et artisans
-- Champs : name, email, phone, role, photo, location (GeoJSON)
-- Artisan : specialties, experience, verified, average_rating
-
-### 2. `service_requests`
-- Demandes de service
-- Champs : client_id, service_type, description, photos, address, location, status
-- Status : pending → assigned → completed
-
-### 3. `messages`
-- Messages du chat
-- Champs : request_id, sender_id, receiver_id, message, timestamp
-
-### 4. `ratings`
-- Notes des artisans
-- Champs : request_id, artisan_id, client_id, rating (1-5), comment
-
-## 🎯 Prochaines Améliorations (Phase 2)
-
-- [ ] Chat temps réel fonctionnel (interface)
-- [ ] Notifications push
-- [ ] Paiement Mobile Money (Orange/MTN/Moov)
-- [ ] Dashboard admin complet (frontend)
-- [ ] Système de géofencing avancé
-- [ ] Historique détaillé avec filtres
-- [ ] Mode hors ligne
-- [ ] Appels vidéo/audio
-- [ ] Système de badges artisans
-
-## 🐛 Troubleshooting
-
-### Backend ne démarre pas
-```bash
-sudo supervisorctl restart backend
-tail -f /var/log/supervisor/backend.err.log
-```
-
-### Frontend Expo ne compile pas
-```bash
-sudo supervisorctl restart expo
-tail -f /var/log/supervisor/expo.err.log
-```
-
-### MongoDB non accessible
-```bash
-sudo systemctl status mongodb
-sudo systemctl restart mongodb
-```
-
-## 📄 Licence
-
-Ce projet est une application MVP créée avec Emergent Agent.
+**Stack**: Expo/React Native + FastAPI + MongoDB + Socket.IO
 
 ---
 
-**Développé avec ❤️ par Emergent AI Agent**
+## Quickstart
+
+### Prerequisites
+- Python 3.11+
+- Node.js 20+
+- MongoDB (local or Atlas)
+- Git
+
+### Backend
+```powershell
+cd C:\klawd-data\projects\chapchap\CHAPCHAP-main
+
+# Create venv + install deps
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+
+# Copy and edit env
+Copy-Item backend\.env.example backend\.env
+# Edit backend\.env with your values
+
+# Start server
+.\.venv\Scripts\python.exe backend\server.py
+# -> http://localhost:8001
+# -> OpenAPI docs: http://localhost:8001/docs
+```
+
+### Frontend
+```powershell
+cd C:\klawd-data\projects\chapchap\CHAPCHAP-main\frontend
+
+# Install deps
+yarn install
+
+# Copy and edit env
+Copy-Item .env.example .env
+# Set EXPO_PUBLIC_API_BASE_URL to your machine IP
+
+# Start Expo dev server
+npm start
+# Scan QR code with Expo Go on your phone
+```
+
+### Tests
+```powershell
+cd C:\klawd-data\projects\chapchap\CHAPCHAP-main
+
+# Backend tests (requires MongoDB running)
+.\.venv\Scripts\python.exe -m pytest tests/ -q
+
+# Frontend lint
+cd frontend && npm run lint
+```
+
+---
+
+## Project Structure
+
+```
+CHAPCHAP-main/
+  backend/
+    server.py              # FastAPI app + legacy routes
+    database.py            # MongoDB connection + indexes
+    models.py              # Pydantic models
+    auth.py                # JWT + Firebase auth
+    permissions.py         # RBAC (super_admin, staff, finance, support)
+    state_machine.py       # Service request lifecycle
+    events.py              # Async event bus
+    event_handlers.py      # Event -> notification/credit cascade
+    notification_service.py # Multi-channel notifications
+    scheduler.py           # Delayed notification scheduler
+    credit_system.py       # Artisan credit tiers + commission
+    socketio_server.py     # Real-time chat
+    middleware.py           # Correlation ID + rate limiting
+    payments/              # Escrow payment system (Wave adapter + mock)
+    routes/                # Modular API routes
+    scripts/               # Migration + smoke test scripts
+  frontend/
+    app/                   # Expo Router screens
+    src/config/            # Constants, service catalog
+    src/services/          # API client, Socket.IO, notifications
+    src/store/             # Zustand auth store
+  tests/                   # pytest E2E + RBAC + payment tests
+  .github/workflows/       # CI/CD (GitHub Actions)
+  DEPLOY.md                # Deployment guide (Render + Atlas + EAS)
+  RUNBOOK.md               # Operations runbook
+```
+
+---
+
+## API Overview
+
+| Prefix | Description |
+|--------|-------------|
+| `/api/auth/*` | Register, login, current user |
+| `/api/requests/*` | Service request CRUD + lifecycle |
+| `/api/conversations/*` | Chat conversations + messages |
+| `/api/notifications/*` | User notifications + push token |
+| `/api/payments/*` | Escrow payments (initiate, webhook, status) |
+| `/api/credit/*` | Artisan credit system |
+| `/api/health/*` | Health checks (liveness, DB, version) |
+| `/api/admin/*` | Admin RBAC endpoints |
+
+Full OpenAPI docs at `http://localhost:8001/docs`
+
+---
+
+## Key Flows
+
+1. **Client creates request** -> artisan notified
+2. **Artisan accepts** -> conversation auto-created, payment intent available
+3. **Client pays (escrow)** -> funds held by platform
+4. **Artisan starts -> completes** -> client notified
+5. **Client confirms** -> funds released, commission deducted, credit consumed
+
+---
+
+## Deployment
+
+See [DEPLOY.md](DEPLOY.md) for full staging + production deployment guide.
+See [RUNBOOK.md](RUNBOOK.md) for operations, incidents, and rollback procedures.
+
+---
+
+## Environment Variables
+
+See `backend/.env.example` and `frontend/.env.example` for complete lists.

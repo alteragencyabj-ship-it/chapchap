@@ -26,17 +26,20 @@ except Exception as e:
 
 security = HTTPBearer()
 
-JWT_SECRET = os.getenv("JWT_SECRET_KEY", "your-super-secret-jwt-key")
+# Support both env var names; `.env` uses JWT_SECRET.
+JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("JWT_SECRET_KEY") or "your-super-secret-jwt-key"
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
-def create_access_token(user_id: str, email: str) -> str:
-    """Create JWT token for user"""
+def create_access_token(user_id: str, email: str, admin_role: str = None) -> str:
+    """Create JWT token for user. Includes admin_role if set."""
     expire = datetime.utcnow() + timedelta(days=7)
     to_encode = {
         "sub": user_id,
         "email": email,
-        "exp": expire
+        "exp": expire,
     }
+    if admin_role:
+        to_encode["admin_role"] = admin_role
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
@@ -59,10 +62,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     # Use JWT authentication
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return {
+        result = {
             "uid": payload["sub"],
-            "email": payload["email"]
+            "email": payload["email"],
         }
+        if "admin_role" in payload:
+            result["admin_role"] = payload["admin_role"]
+        return result
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

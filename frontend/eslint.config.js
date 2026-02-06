@@ -6,5 +6,9 @@ module.exports = defineConfig([
   expoConfig,
   {
     ignores: ['dist/*'],
+    rules: {
+      // This rule is aimed at React DOM/HTML; it creates noise in React Native <Text>.
+      'react/no-unescaped-entities': 'off',
+    },
   },
 ]);

@@ -18,7 +18,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { COLORS, SERVICE_TYPES } from '../src/config/constants';
+import { COLORS, SERVICE_CATEGORIES } from '../src/config/constants';
 import api from '../src/services/api';
 
 export default function CreateRequest() {
@@ -166,7 +166,7 @@ export default function CreateRequest() {
           <View style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Quel service recherchez-vous ?</Text>
             <View style={styles.servicesGrid}>
-              {SERVICE_TYPES.map((service) => (
+              {SERVICE_CATEGORIES.map((service) => (
                 <TouchableOpacity
                   key={service.id}
                   style={[

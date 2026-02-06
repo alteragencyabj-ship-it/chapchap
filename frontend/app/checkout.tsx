@@ -48,20 +48,20 @@ export default function Checkout() {
 
     setLoading(true);
     try {
-      const bookingData = {
+      const requestData = {
         artisan_id: artisanId as string,
-        service_id: serviceId as string,
+        service_type: categoryId as string,
         service_name: serviceName as string,
         service_price: servicePrice as string,
-        category_id: categoryId as string,
-        address,
+        description: notes || `Demande pour ${serviceName}`,
+        address: `${quartier}, ${address}`,
         phone,
-        quartier,
-        notes,
         payment_method: paymentMethod,
+        photos: [],
+        location: { type: 'Point', coordinates: [0, 0] },  // Will be updated with real GPS
       };
 
-      const response = await api.post('/bookings', bookingData);
+      const response = await api.post('/requests', requestData);
       
       router.push({
         pathname: '/booking-confirmation',

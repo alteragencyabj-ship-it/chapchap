@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import socketio
 import os
 import logging
+import json
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import List, Optional
@@ -21,16 +22,45 @@ from models import (
 )
 from auth import get_current_user, create_access_token, get_optional_user
 from socketio_server import sio
+from notification_service import seed_notification_templates
+from middleware import CorrelationIdMiddleware, RateLimitMiddleware
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Environment config
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
+
+
+def _validate_secrets():
+    """Fail fast if critical secrets are missing or default in production."""
+    jwt_secret = os.getenv("JWT_SECRET", "")
+    bad_defaults = {"", "change-me", "chapchap-2026-secret-key-change-in-production", "your-super-secret-jwt-key"}
+    if ENVIRONMENT == "production":
+        if jwt_secret in bad_defaults:
+            raise RuntimeError("FATAL: JWT_SECRET must be set to a secure random value in production")
+        if len(jwt_secret) < 32:
+            raise RuntimeError("FATAL: JWT_SECRET must be at least 32 characters in production")
+        if ALLOWED_ORIGINS == ["*"]:
+            raise RuntimeError("FATAL: ALLOWED_ORIGINS must not be '*' in production")
+    elif jwt_secret in bad_defaults:
+        logging.getLogger(__name__).warning(
+            "JWT_SECRET is set to a default value. Change it before going to production."
+        )
+
 
 # Lifespan context manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    _validate_secrets()
     await connect_to_mongo()
-    print("[OK] Application startup complete")
+    # Register event handlers (must import AFTER db init)
+    import event_handlers  # noqa: F401
+    # Seed notification templates
+    await seed_notification_templates()
+    print(f"[OK] Application startup complete (env={ENVIRONMENT})")
     yield
     # Shutdown
     await close_mongo_connection()
@@ -38,16 +68,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Artisan Connect API", lifespan=lifespan)
 
+# Middleware stack (order matters: first added = outermost)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
+app.add_middleware(CorrelationIdMiddleware)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS if ALLOWED_ORIGINS != ["*"] else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# API Router
+# API Router (for legacy inline routes)
 api_router = APIRouter(prefix="/api")
 
 # ==================== AUTH ROUTES ====================
@@ -55,33 +89,27 @@ api_router = APIRouter(prefix="/api")
 @api_router.post("/auth/register", response_model=TokenResponse)
 async def register(user_data: UserCreate):
     """Register a new user"""
-    # Check if user exists
     existing_user = await db_module.db.users.find_one({"email": user_data.email})
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Prepare user document
+
     user_dict = user_data.dict(exclude={"password"}, exclude_none=True)
     user_dict["created_at"] = datetime.utcnow()
-    
-    # Set defaults for artisan fields if role is artisan
+
     if user_data.role == "artisan":
         user_dict["verified"] = False
         user_dict["average_rating"] = 0.0
         user_dict["total_missions"] = 0
-    
-    # Hash password if provided (fallback auth)
+
     if user_data.password:
         hashed = bcrypt.hashpw(user_data.password.encode(), bcrypt.gensalt())
         user_dict["password_hash"] = hashed.decode()
-    
-    # Insert user
+
     result = await db_module.db.users.insert_one(user_dict)
     user_dict["_id"] = str(result.inserted_id)
-    
-    # Create token
+
     token = create_access_token(user_dict["_id"], user_data.email)
-    
+
     user_obj = User(**user_dict)
     return TokenResponse(access_token=token, user=user_obj)
 
@@ -91,18 +119,18 @@ async def login(login_data: LoginRequest):
     user = await db_module.db.users.find_one({"email": login_data.email})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    # Verify password
+
     if "password_hash" in user:
         if not bcrypt.checkpw(login_data.password.encode(), user["password_hash"].encode()):
             raise HTTPException(status_code=401, detail="Invalid credentials")
     else:
         raise HTTPException(status_code=401, detail="Password not set for this account")
-    
+
     user["_id"] = str(user["_id"])
-    token = create_access_token(user["_id"], user["email"])
+    admin_role = user.get("admin_role")
+    token = create_access_token(user["_id"], user["email"], admin_role=admin_role)
     user_obj = User(**user)
-    
+
     return TokenResponse(access_token=token, user=user_obj)
 
 @api_router.get("/auth/me", response_model=User)
@@ -112,6 +140,13 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user["_id"] = str(user["_id"])
+
+    # Update last_seen_at
+    await db_module.db.users.update_one(
+        {"_id": ObjectId(user["_id"])},
+        {"$set": {"last_seen_at": datetime.utcnow()}},
+    )
+
     return User(**user)
 
 # ==================== USER ROUTES ====================
@@ -139,12 +174,12 @@ async def get_artisans(
         query["city"] = city
     if verified_only:
         query["verified"] = True
-    
+
     artisans = []
     async for artisan in db_module.db.users.find(query).limit(50):
         artisan["_id"] = str(artisan["_id"])
         artisans.append(User(**artisan))
-    
+
     return artisans
 
 @api_router.put("/users/{user_id}", response_model=User)
@@ -154,65 +189,21 @@ async def update_user(
     current_user: dict = Depends(get_current_user)
 ):
     """Update user profile"""
-    # Verify user is updating their own profile
     user = await db_module.db.users.find_one({"email": current_user["email"]})
     if str(user["_id"]) != user_id:
         raise HTTPException(status_code=403, detail="Cannot update other users")
-    
-    # Update user
+
     await db_module.db.users.update_one(
         {"_id": ObjectId(user_id)},
         {"$set": user_data}
     )
-    
+
     updated_user = await db_module.db.users.find_one({"_id": ObjectId(user_id)})
     updated_user["_id"] = str(updated_user["_id"])
     return User(**updated_user)
 
-# ==================== SERVICE REQUEST ROUTES ====================
-
-@api_router.post("/requests", response_model=ServiceRequest)
-async def create_request(
-    request_data: ServiceRequestCreate,
-    current_user: dict = Depends(get_current_user)
-):
-    """Create a new service request"""
-    user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
-    request_dict = request_data.dict()
-    request_dict["client_id"] = str(user["_id"])
-    request_dict["status"] = "pending"
-    request_dict["created_at"] = datetime.utcnow()
-    
-    result = await db_module.db.service_requests.insert_one(request_dict)
-    request_dict["_id"] = str(result.inserted_id)
-    
-    return ServiceRequest(**request_dict)
-
-@api_router.get("/requests", response_model=List[ServiceRequest])
-async def get_requests(
-    status: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
-):
-    """Get service requests for current user"""
-    user = await db_module.db.users.find_one({"email": current_user["email"]})
-    user_id = str(user["_id"])
-    
-    query = {}
-    if user["role"] == "client":
-        query["client_id"] = user_id
-    elif user["role"] == "artisan":
-        query["assigned_artisan_id"] = user_id
-    
-    if status:
-        query["status"] = status
-    
-    requests = []
-    async for req in db_module.db.service_requests.find(query).sort("created_at", -1):
-        req["_id"] = str(req["_id"])
-        requests.append(ServiceRequest(**req))
-    
-    return requests
+# ==================== LEGACY SERVICE REQUEST ROUTES ====================
+# (Kept for backward compatibility -- new flow is in routes/requests.py)
 
 @api_router.get("/requests/available", response_model=List[ServiceRequest])
 async def get_available_requests(
@@ -223,94 +214,31 @@ async def get_available_requests(
 ):
     """Get available service requests for artisans"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
+
     if user["role"] != "artisan":
         raise HTTPException(status_code=403, detail="Only artisans can view available requests")
-    
-    query = {"status": "pending"}
-    
-    # Filter by location if provided
+
+    query = {"status": {"$in": ["pending", "published"]}}
+
     if lat and lng:
         query["location"] = {
             "$near": {
-                "$geometry": {
-                    "type": "Point",
-                    "coordinates": [lng, lat]
-                },
-                "$maxDistance": radius_km * 1000  # Convert km to meters
+                "$geometry": {"type": "Point", "coordinates": [lng, lat]},
+                "$maxDistance": radius_km * 1000
             }
         }
-    
-    # Filter by specialty
+
     if user.get("specialties"):
         query["service_type"] = {"$in": user["specialties"]}
-    
+
     requests = []
     async for req in db_module.db.service_requests.find(query).limit(20):
         req["_id"] = str(req["_id"])
         requests.append(ServiceRequest(**req))
-    
+
     return requests
 
-@api_router.get("/requests/{request_id}", response_model=ServiceRequest)
-async def get_request(request_id: str):
-    """Get service request by ID"""
-    request = await db_module.db.service_requests.find_one({"_id": ObjectId(request_id)})
-    if not request:
-        raise HTTPException(status_code=404, detail="Request not found")
-    request["_id"] = str(request["_id"])
-    return ServiceRequest(**request)
-
-@api_router.post("/requests/{request_id}/accept")
-async def accept_request(
-    request_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Accept a service request (artisan only)"""
-    user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
-    if user["role"] != "artisan":
-        raise HTTPException(status_code=403, detail="Only artisans can accept requests")
-    
-    request = await db_module.db.service_requests.find_one({"_id": ObjectId(request_id)})
-    if not request:
-        raise HTTPException(status_code=404, detail="Request not found")
-    
-    if request["status"] != "pending":
-        raise HTTPException(status_code=400, detail="Request is not available")
-    
-    # Update request
-    await db_module.db.service_requests.update_one(
-        {"_id": ObjectId(request_id)},
-        {"$set": {
-            "assigned_artisan_id": str(user["_id"]),
-            "status": "assigned"
-        }}
-    )
-    
-    return {"message": "Request accepted successfully"}
-
-@api_router.post("/requests/{request_id}/complete")
-async def complete_request(
-    request_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Mark request as completed"""
-    request = await db_module.db.service_requests.find_one({"_id": ObjectId(request_id)})
-    if not request:
-        raise HTTPException(status_code=404, detail="Request not found")
-    
-    await db_module.db.service_requests.update_one(
-        {"_id": ObjectId(request_id)},
-        {"$set": {
-            "status": "completed",
-            "completed_at": datetime.utcnow()
-        }}
-    )
-    
-    return {"message": "Request completed"}
-
-# ==================== BOOKING ROUTES ====================
+# ==================== BOOKING ROUTES (Legacy alias) ====================
 
 @api_router.post("/bookings", response_model=Booking)
 async def create_booking(
@@ -319,16 +247,16 @@ async def create_booking(
 ):
     """Create a new booking/reservation"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
+
     booking_dict = booking_data.dict()
     booking_dict["client_id"] = str(user["_id"])
     booking_dict["client_name"] = user.get("name", "Client")
     booking_dict["status"] = "pending_artisan"
     booking_dict["created_at"] = datetime.utcnow()
-    
+
     result = await db_module.db.bookings.insert_one(booking_dict)
     booking_dict["_id"] = str(result.inserted_id)
-    
+
     return Booking(**booking_dict)
 
 @api_router.get("/bookings", response_model=List[Booking])
@@ -339,21 +267,21 @@ async def get_bookings(
     """Get bookings for current user"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
     user_id = str(user["_id"])
-    
+
     query = {}
     if user["role"] == "client":
         query["client_id"] = user_id
     elif user["role"] == "artisan":
         query["artisan_id"] = user_id
-    
+
     if status:
         query["status"] = status
-    
+
     bookings = []
     async for booking in db_module.db.bookings.find(query).sort("created_at", -1):
         booking["_id"] = str(booking["_id"])
         bookings.append(Booking(**booking))
-    
+
     return bookings
 
 @api_router.get("/bookings/{booking_id}", response_model=Booking)
@@ -372,26 +300,19 @@ async def accept_booking(
 ):
     """Accept a booking (artisan only)"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
     if user["role"] != "artisan":
         raise HTTPException(status_code=403, detail="Only artisans can accept bookings")
-    
+
     booking = await db_module.db.bookings.find_one({"_id": ObjectId(booking_id)})
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
-    
     if booking["status"] != "pending_artisan":
         raise HTTPException(status_code=400, detail="Booking is not available")
-    
-    # Update booking
+
     await db_module.db.bookings.update_one(
         {"_id": ObjectId(booking_id)},
-        {"$set": {
-            "status": "accepted",
-            "updated_at": datetime.utcnow()
-        }}
+        {"$set": {"status": "accepted", "updated_at": datetime.utcnow()}}
     )
-    
     return {"message": "Booking accepted successfully"}
 
 @api_router.post("/bookings/{booking_id}/complete")
@@ -403,16 +324,11 @@ async def complete_booking(
     booking = await db_module.db.bookings.find_one({"_id": ObjectId(booking_id)})
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
-    
+
     await db_module.db.bookings.update_one(
         {"_id": ObjectId(booking_id)},
-        {"$set": {
-            "status": "completed",
-            "completed_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }}
+        {"$set": {"status": "completed", "completed_at": datetime.utcnow(), "updated_at": datetime.utcnow()}}
     )
-    
     return {"message": "Booking completed"}
 
 # ==================== RATING ROUTES ====================
@@ -424,29 +340,26 @@ async def create_rating(
 ):
     """Create a rating for an artisan"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
+
     rating_dict = rating_data.dict()
     rating_dict["client_id"] = str(user["_id"])
     rating_dict["created_at"] = datetime.utcnow()
-    
+
     result = await db_module.db.ratings.insert_one(rating_dict)
     rating_dict["_id"] = str(result.inserted_id)
-    
+
     # Update artisan's average rating
     artisan_ratings = []
     async for r in db_module.db.ratings.find({"artisan_id": rating_data.artisan_id}):
         artisan_ratings.append(r["rating"])
-    
+
     if artisan_ratings:
         avg_rating = sum(artisan_ratings) / len(artisan_ratings)
         await db_module.db.users.update_one(
             {"_id": ObjectId(rating_data.artisan_id)},
-            {"$set": {
-                "average_rating": avg_rating,
-                "total_missions": len(artisan_ratings)
-            }}
+            {"$set": {"average_rating": avg_rating, "total_missions": len(artisan_ratings)}}
         )
-    
+
     return Rating(**rating_dict)
 
 @api_router.get("/ratings/artisan/{artisan_id}", response_model=List[Rating])
@@ -458,7 +371,7 @@ async def get_artisan_ratings(artisan_id: str):
         ratings.append(Rating(**rating))
     return ratings
 
-# ==================== MESSAGE ROUTES ====================
+# ==================== MESSAGE ROUTES (Legacy) ====================
 
 @api_router.get("/messages/conversation/{other_user_id}", response_model=List[Message])
 async def get_conversation(
@@ -469,43 +382,42 @@ async def get_conversation(
     """Get conversation between current user and another user"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
     user_id = str(user["_id"])
-    
+
     query = {
         "$or": [
             {"sender_id": user_id, "receiver_id": other_user_id},
             {"sender_id": other_user_id, "receiver_id": user_id}
         ]
     }
-    
+
     if request_id:
         query["request_id"] = request_id
-    
+
     messages = []
     async for msg in db_module.db.messages.find(query).sort("timestamp", 1):
         msg["_id"] = str(msg["_id"])
         messages.append(Message(**msg))
-    
+
     return messages
 
-# ==================== ADMIN ROUTES ====================
+# ==================== ADMIN ROUTES (Legacy stats) ====================
 
 @api_router.get("/admin/stats")
 async def get_admin_stats(current_user: dict = Depends(get_current_user)):
     """Get admin dashboard statistics"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     total_users = await db_module.db.users.count_documents({})
     total_clients = await db_module.db.users.count_documents({"role": "client"})
     total_artisans = await db_module.db.users.count_documents({"role": "artisan"})
     verified_artisans = await db_module.db.users.count_documents({"role": "artisan", "verified": True})
-    
+
     total_requests = await db_module.db.service_requests.count_documents({})
-    pending_requests = await db_module.db.service_requests.count_documents({"status": "pending"})
-    completed_requests = await db_module.db.service_requests.count_documents({"status": "completed"})
-    
+    pending_requests = await db_module.db.service_requests.count_documents({"status": {"$in": ["pending", "published"]}})
+    completed_requests = await db_module.db.service_requests.count_documents({"status": {"$in": ["completed", "confirmed"]}})
+
     return {
         "users": {
             "total": total_users,
@@ -524,15 +436,13 @@ async def get_admin_stats(current_user: dict = Depends(get_current_user)):
 async def get_pending_artisans(current_user: dict = Depends(get_current_user)):
     """Get artisans pending verification"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     artisans = []
     async for artisan in db_module.db.users.find({"role": "artisan", "verified": False}):
         artisan["_id"] = str(artisan["_id"])
         artisans.append(User(**artisan))
-    
     return artisans
 
 @api_router.post("/admin/artisans/{artisan_id}/verify")
@@ -543,18 +453,17 @@ async def verify_artisan(
 ):
     """Verify or reject an artisan"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     await db_module.db.users.update_one(
         {"_id": ObjectId(artisan_id)},
         {"$set": {"verified": verified}}
     )
-    
     return {"message": f"Artisan {'verified' if verified else 'rejected'}"}
 
-# ==================== HEALTH CHECK ====================
+# ==================== HEALTH CHECK (legacy -- kept for backward compat) ====================
+# Full health suite is in routes/health.py (/api/health, /api/health/db, /api/health/version)
 
 @api_router.get("/health")
 async def health_check():
@@ -569,10 +478,8 @@ from models import CommissionPaymentCreate, CreditStatus
 async def get_credit_status(current_user: dict = Depends(get_current_user)):
     """Get current artisan's credit status"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
     if user["role"] != "artisan":
         raise HTTPException(status_code=403, detail="Only artisans have credit accounts")
-    
     status = await credit_system.get_credit_status(str(user["_id"]))
     return status
 
@@ -580,10 +487,8 @@ async def get_credit_status(current_user: dict = Depends(get_current_user)):
 async def check_can_accept(current_user: dict = Depends(get_current_user)):
     """Check if artisan can accept a new mission"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
     if user["role"] != "artisan":
         raise HTTPException(status_code=403, detail="Only artisans have credit accounts")
-    
     result = await credit_system.check_can_accept_mission(str(user["_id"]))
     return result
 
@@ -594,13 +499,10 @@ async def pay_commission(
 ):
     """Pay commission to unlock account"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
     if user["role"] != "artisan":
         raise HTTPException(status_code=403, detail="Only artisans can pay commissions")
-    
     if payment.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
-    
     result = await credit_system.pay_commission(
         artisan_id=str(user["_id"]),
         amount=payment.amount,
@@ -615,17 +517,15 @@ async def get_transactions(
 ):
     """Get artisan's transaction history"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
     if user["role"] != "artisan":
         raise HTTPException(status_code=403, detail="Only artisans have transactions")
-    
+
     transactions = []
     async for tx in db_module.db.mission_transactions.find(
         {"artisan_id": str(user["_id"])}
     ).sort("created_at", -1).limit(limit):
         tx["_id"] = str(tx["_id"])
         transactions.append(tx)
-    
     return transactions
 
 @api_router.get("/credit/payments")
@@ -635,17 +535,15 @@ async def get_payments(
 ):
     """Get artisan's payment history"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
     if user["role"] != "artisan":
         raise HTTPException(status_code=403, detail="Only artisans have payments")
-    
+
     payments = []
     async for p in db_module.db.commission_payments.find(
         {"artisan_id": str(user["_id"])}
     ).sort("created_at", -1).limit(limit):
         p["_id"] = str(p["_id"])
         payments.append(p)
-    
     return payments
 
 # ==================== ADMIN CREDIT ROUTES ====================
@@ -654,41 +552,36 @@ async def get_payments(
 async def get_blocked_artisans(current_user: dict = Depends(get_current_user)):
     """Get all blocked artisans (admin only)"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     blocked = []
     async for credit in db_module.db.artisan_credits.find({"is_blocked": True}):
         credit["_id"] = str(credit["_id"])
-        # Get artisan info
         artisan = await db_module.db.users.find_one({"_id": ObjectId(credit["artisan_id"])})
         if artisan:
             credit["artisan_name"] = artisan.get("name", "Unknown")
             credit["artisan_phone"] = artisan.get("phone", "N/A")
         blocked.append(credit)
-    
     return blocked
 
 @api_router.get("/admin/credits/stats")
 async def get_credit_stats(current_user: dict = Depends(get_current_user)):
     """Get overall credit system stats (admin only)"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
-    # Aggregate stats
+
     total_commission_due = 0
     total_paid = 0
     blocked_count = 0
-    
+
     async for credit in db_module.db.artisan_credits.find({}):
         total_commission_due += credit.get("commission_due", 0)
         total_paid += credit.get("total_paid", 0)
         if credit.get("is_blocked"):
             blocked_count += 1
-    
+
     return {
         "total_commission_due": total_commission_due,
         "total_commission_paid": total_paid,
@@ -706,19 +599,29 @@ async def analyze_request(data: dict):
     result = await ai_logic.analyze_service_request(data.get("description", ""))
     return result
 
-# Include router
+# ==================== MOUNT ROUTERS ====================
+
+# Legacy inline router
 app.include_router(api_router)
+
+# New modular routers
+from routes import all_routers
+for r in all_routers:
+    app.include_router(r)
 
 # Mount Socket.IO
 socket_app = socketio.ASGIApp(sio, app, socketio_path="/socket.io/")
 
-# Configure logging
+# Structured logging
+_log_level = logging.DEBUG if ENVIRONMENT == "development" else logging.INFO
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=_log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
 )
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(socket_app, host="0.0.0.0", port=8001)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8001"))
+    uvicorn.run(socket_app, host=host, port=port)

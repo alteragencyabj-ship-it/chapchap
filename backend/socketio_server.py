@@ -2,12 +2,21 @@ import socketio
 import os
 from typing import Dict, Set
 from datetime import datetime
+from pathlib import Path
+from dotenv import load_dotenv
 from bson import ObjectId
+
+# Load env for CORS config
+_root = Path(__file__).parent
+load_dotenv(_root / '.env')
+
+_origins_raw = os.getenv("ALLOWED_ORIGINS", "*")
+_sio_cors = [o.strip() for o in _origins_raw.split(",") if o.strip()] if _origins_raw != "*" else "*"
 
 # Create Socket.IO server with ASGI mode for FastAPI compatibility
 sio = socketio.AsyncServer(
     async_mode='asgi',
-    cors_allowed_origins="*",
+    cors_allowed_origins=_sio_cors,
     ping_interval=25,
     ping_timeout=10,
     logger=True,
@@ -79,7 +88,7 @@ async def send_message(sid, data):
         "read": False
     }
     
-    result = await db.messages.insert_one(message_doc)
+    result = await db_module.db.messages.insert_one(message_doc)
     message_doc["_id"] = str(result.inserted_id)
     message_doc["timestamp"] = message_doc["timestamp"].isoformat()
     
@@ -95,46 +104,46 @@ async def send_message(sid, data):
 @sio.event
 async def get_history(sid, data):
     """Send chat history to client"""
-    from database import db
-    
+    import database as db_module
+
     user_id = user_sockets.get(sid)
     if not user_id:
         await sio.emit("error", {"message": "Not authenticated"}, to=sid)
         return
-    
+
     other_user_id = data.get("other_user_id")
     request_id = data.get("request_id")
-    
+
     query = {}
     if request_id:
         query["request_id"] = request_id
-    
+
     query["$or"] = [
         {"sender_id": user_id, "receiver_id": other_user_id},
         {"sender_id": other_user_id, "receiver_id": user_id}
     ]
-    
+
     messages = []
-    async for msg in db.messages.find(query).sort("timestamp", 1).limit(100):
+    async for msg in db_module.db.messages.find(query).sort("timestamp", 1).limit(100):
         msg["_id"] = str(msg["_id"])
         msg["timestamp"] = msg["timestamp"].isoformat()
         messages.append(msg)
-    
+
     await sio.emit("chat_history", {"messages": messages}, to=sid)
-    print(f"📚 Sent {len(messages)} messages to {user_id}")
+    print(f"Sent {len(messages)} messages to {user_id}")
 
 @sio.event
 async def mark_read(sid, data):
     """Mark messages as read"""
-    from database import db
-    
+    import database as db_module
+
     user_id = user_sockets.get(sid)
     if not user_id:
         return
-    
+
     message_ids = data.get("message_ids", [])
     if message_ids:
-        await db.messages.update_many(
+        await db_module.db.messages.update_many(
             {"_id": {"$in": [ObjectId(mid) for mid in message_ids]}, "receiver_id": user_id},
             {"$set": {"read": True}}
         )
