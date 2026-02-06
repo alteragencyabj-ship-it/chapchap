@@ -1,7 +1,7 @@
-﻿# Validation ChapChap — 2026-02-06
+# Validation ChapChap -- 2026-02-06 (v2 -- staging-ready)
 
 ## Contexte
-Validation runtime et lint suite a l'implementation des phases 1-5 (backend FastAPI/Mongo/Socket.IO + frontend Expo).
+Validation runtime et lint suite a l'implementation des phases 1-5 + hardening staging/prod.
 
 ## Backend (C:/klawd-data/projects/chapchap/CHAPCHAP-main/backend/)
 
@@ -16,60 +16,91 @@ Validation runtime et lint suite a l'implementation des phases 1-5 (backend Fast
   - Ajout helper `_ensure_ttl_index()` qui drop l'index equivalent existant si options incompatibles, puis recree le TTL.
   - Applique a `audit_log.timestamp` (365j) et `notifications.created_at` (90j).
 
-### Smoke test (OK)
-Test execute via `fastapi.testclient.TestClient` (lifespan active):
-- GET `/api/health` => 200
-- GET `/openapi.json` => routers montes (requests/conversations/notifications + /api/admin/*)
-- POST `/api/auth/register` (client + artisan)
-- POST `/api/requests` (client, request ciblee artisan)
-- POST `/api/requests/{id}/accept` (artisan) => conversation auto
-- POST `/api/conversations/{id}/messages`
-- POST `/api/requests/{id}/start` -> `/complete` -> `/confirm`
-- GET `/api/notifications` (client + artisan)
+### Tests automatises (pytest)
+```
+5 passed, 24 warnings in 2.99s
+```
+- `tests/test_backend_smoke_e2e.py` -- Flow E2E (register -> request -> accept -> chat -> lifecycle -> notifications)
+- `tests/test_backend_admin_rbac.py` -- RBAC permission enforcement (2 tests)
+- `tests/test_payments.py` -- Payment initiation + idempotency + webhook processing (2 tests)
+
+### Backend Hardening (NEW)
+- [x] CORS: env-driven `ALLOWED_ORIGINS` (no wildcard in production)
+- [x] Socket.IO CORS aligned with `ALLOWED_ORIGINS`
+- [x] Secrets validation: fail-fast if `JWT_SECRET` is default in `ENVIRONMENT=production`
+- [x] Correlation ID middleware (`X-Correlation-ID` header on every request)
+- [x] Rate limiting: 60 req/min per IP (in-memory, skips health + socketio)
+- [x] Structured logging with environment-aware log level
+
+### Health Endpoints (NEW)
+- [x] `GET /api/health` -- liveness probe (200 OK)
+- [x] `GET /api/health/db` -- MongoDB ping (200 or 503)
+- [x] `GET /api/health/version` -- git SHA `dfdbcab`, environment, payment provider
+
+### Payments MVP (NEW)
+- [x] Adapter pattern: `MockPaymentAdapter` (dev) + `WavePaymentAdapter` (prod)
+- [x] Escrow at acceptance: client pays when artisan accepts
+- [x] Release after confirmation: commission deducted per artisan credit tier
+- [x] Idempotency keys (unique index, blocks double charges)
+- [x] Endpoints: `/api/payments/initiate`, `/webhook`, `/status/{id}`, `/by-request/{id}`
+- [x] Mock adapter: deterministic, no credentials needed, tests pass offline
+- [x] DB collections: `payment_intents` (6 indexes), `payment_events` (2 indexes)
+
+### Migration legacy (bookings -> service_requests)
+- Script: `backend/scripts/migrate_bookings_to_service_requests.py`
+  - Mode par defaut: `--dry-run`
+  - Migration appliquee: `[APPLY] bookings_seen=1 created=1 skipped=0 errors=0`
+  - Rapport JSON: `migration_report.json`
+- Idempotent via `legacy_booking_id`
 
 ### Petits ajustements de robustesse
 - `backend/auth.py`: lit maintenant `JWT_SECRET` (et garde compat `JWT_SECRET_KEY`).
 - `backend/server.py`: `uvicorn.run()` utilise `HOST` / `PORT` depuis `.env` (fallback 0.0.0.0:8001).
 
-### Migration legacy (bookings -> service_requests)
-- Script: `backend/scripts/migrate_bookings_to_service_requests.py`
-  - Mode par defaut: `--dry-run`
-  - Appliquer: `--apply`
-- `ServiceRequest.location` est maintenant optionnel (support legacy bookings sans GeoJSON).
-
-### Tests automatises (pytest)
-- Ajoutes:
-  - `tests/test_backend_smoke_e2e.py` (flow E2E principal)
-  - `tests/test_backend_admin_rbac.py` (RBAC admin)
-- Run: depuis `CHAPCHAP-main/` -> `.\.venv\Scripts\python.exe -m pytest -q`
-
 ## Frontend (C:/klawd-data/projects/chapchap/CHAPCHAP-main/frontend/)
 
-### Deps / lint
-- Ajout dependency: `expo-notifications` (via `expo install`).
-- Fix peer deps: `@types/react` bump a `^19.1.0`.
-- `npm run lint` => 0 erreur (warnings restantes seulement).
+### Lint
+```
+0 errors, 10 warnings
+```
 
-### Fix lint bloquants
-- `frontend/eslint.config.js`: desactive `react/no-unescaped-entities` (bruyant pour React Native).
-- `frontend/app/booking-confirmation.tsx`: suppression import `lottie-react-native` (inutilise + module manquant).
-- `frontend/src/services/notifications.ts`: suppression import inutilise `Platform`.
-
-### Config API
+### Config
 - `frontend/src/config/constants.ts`: `API_BASE_URL` configurable via `EXPO_PUBLIC_API_BASE_URL`.
-  - Fallback aligne sur backend `.env` (port 8001).
+- `frontend/.env.example` cree (API_BASE_URL, EXPO_PROJECT_ID, GOOGLE_MAPS_KEY).
+- `frontend/eas.json` cree (profils dev, staging, production).
+
+## CI/CD
+- GitHub Actions workflow: `backend pytest` + `frontend lint`
+- **BLOQUE**: Compte GitHub `alteragencyabj-ship-it` verrouille pour billing -- corriger dans Settings > Billing
+
+## Deploiement
+- `render.yaml` cree -- Render Blueprint (1-click deploy)
+- `DEPLOY.md` -- guide complet (Render + Atlas + EAS)
+- `RUNBOOK.md` -- operations, incidents, rollback
 
 ## Commandes utiles
 
-### Backend
-Depuis `.../CHAPCHAP-main/backend/`:
-- `..\.venv\Scripts\python.exe server.py`
+```powershell
+# Backend
+cd C:\klawd-data\projects\chapchap\CHAPCHAP-main
+.\.venv\Scripts\python.exe backend\server.py
 
-### Frontend
-Depuis `.../CHAPCHAP-main/frontend/`:
-- `npm start`
-- `npm run lint`
+# Tests
+.\.venv\Scripts\python.exe -m pytest tests/ -q
 
-## Points connus (non bloques)
-- Scheduler + rate limiter en memoire (perdus au restart).
-- Push notifications: configuration projet Expo (projectId + setup iOS/Android) a completer.
+# Frontend
+cd frontend && npm start && npm run lint
+
+# Migration
+.\.venv\Scripts\python.exe backend\scripts\migrate_bookings_to_service_requests.py --dry-run
+
+# Push token smoke
+.\.venv\Scripts\python.exe backend\scripts\smoke_push_token.py
+```
+
+## Blockers restants
+1. GitHub billing (bloque CI)
+2. Wave merchant account (pas encore cree)
+3. FCM/APNs credentials (besoin EAS + Apple/Google dev)
+4. MongoDB Atlas (cluster a creer)
+5. Render service (render.yaml pret, 1-click)

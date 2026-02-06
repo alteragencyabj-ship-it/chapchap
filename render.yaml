@@ -1,0 +1,28 @@
+services:
+  - type: web
+    runtime: python
+    name: chapchap-api-staging
+    repo: https://github.com/alteragencyabj-ship-it/chapchap
+    branch: master
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:socket_app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENVIRONMENT
+        value: staging
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: chapchap_staging
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: PAYMENT_PROVIDER
+        value: mock
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+    healthCheckPath: /api/health
+    autoDeploy: true
