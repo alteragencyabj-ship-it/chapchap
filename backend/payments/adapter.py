@@ -6,7 +6,7 @@ is provider-agnostic. Add new providers by subclassing PaymentAdapter.
 
 Currently implemented:
 - MockPaymentAdapter: deterministic responses for dev/test (no credentials needed)
-- WavePaymentAdapter: Wave CI production adapter (requires WAVE_API_KEY)
+- PaiementProAdapter: PaiementPro.net SOAP API v1.3 (Wave, Orange Money, MTN, Moov, Visa/MC)
 """
 
 from __future__ import annotations
@@ -42,7 +42,10 @@ class PaymentAdapter(ABC):
 
     @abstractmethod
     def verify_webhook_signature(
-        self, payload_bytes: bytes, signature: str
+        self,
+        payload_bytes: bytes,
+        signature: str,
+        parsed_payload: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """Verify that the webhook payload was signed by the provider."""
 
@@ -52,12 +55,7 @@ class PaymentAdapter(ABC):
 # ---------------------------------------------------------------------------
 
 class MockPaymentAdapter(PaymentAdapter):
-    """Mock adapter for local dev and automated tests.
-
-    Special behaviours:
-    - idempotency_key starting with "fail-" triggers a failure.
-    - All other calls succeed immediately.
-    """
+    """Mock adapter for local dev and automated tests."""
 
     MOCK_SECRET = "mock-webhook-secret"
 
@@ -80,7 +78,7 @@ class MockPaymentAdapter(PaymentAdapter):
         ref = f"mock_{uuid.uuid4().hex[:12]}"
         return {
             "provider_ref": ref,
-            "checkout_url": f"https://mock-pay.chapchap.local/checkout/{ref}",
+            "checkout_url": f"https://mock-pay.servicio.local/checkout/{ref}",
             "status": "initiated",
         }
 
@@ -90,34 +88,94 @@ class MockPaymentAdapter(PaymentAdapter):
         return {"status": "captured", "raw": {"provider_ref": provider_ref}}
 
     def verify_webhook_signature(
-        self, payload_bytes: bytes, signature: str
+        self,
+        payload_bytes: bytes,
+        signature: str,
+        parsed_payload: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        expected = hmac.new(
+        expected = hmac.HMAC(
             self.MOCK_SECRET.encode(), payload_bytes, hashlib.sha256
         ).hexdigest()
         return hmac.compare_digest(expected, signature)
 
 
 # ---------------------------------------------------------------------------
-# Wave CI adapter -- real provider (credentials required)
+# PaiementPro adapter -- SOAP API v1.3 via zeep
 # ---------------------------------------------------------------------------
 
-class WavePaymentAdapter(PaymentAdapter):
-    """Wave CI payment adapter.
+class PaiementProAdapter(PaymentAdapter):
+    """PaiementPro.net SOAP-based payment adapter (API v1.3).
+
+    Flow:
+    1. Call initTransact() via SOAP → get sessionid
+    2. Redirect user to processing page with sessionid
+    3. PaiementPro POSTs notification to notificationURL
+
+    Supports: Orange Money, MTN, Moov, Visa/MC, PayPal.
+    Supports: Wave, Orange Money, MTN, Moov, Visa/MC, PayPal.
 
     Required env vars:
-    - WAVE_API_KEY
-    - WAVE_WEBHOOK_SECRET
+    - PAIEMENTPRO_MERCHANT_ID  (e.g. "PP-F6917")
+    - PAIEMENTPRO_WEBHOOK_SECRET  (for HMAC-SHA256 hashcode signing/verification)
 
-    Wave API docs: https://docs.wave.com/
+    Optional:
+    - PAIEMENTPRO_WSDL_URL  (default: production WSDL)
+    - PAIEMENTPRO_CURRENCY_CODE  (default: "952" for CFA)
     """
 
+    WSDL_URL = "https://www.paiementpro.net/webservice/OnlineServicePayment_v2.php?wsdl"
+    CHECKOUT_BASE = "https://www.paiementpro.net/webservice/onlinepayment/processing_v2.php"
+
+    # Map our internal channel names → PaiementPro channel codes
+    CHANNEL_MAP: Dict[str, str] = {
+        "wave": "WAVE",
+        "orange_money": "OM CIV2",
+        "mtn": "MOMO",
+        "visa": "CARD",
+        "mastercard": "CARD",
+        "moov": "FLOOZ",
+        "paypal": "PAYPAL",
+        "all": "",  # empty = user chooses on PP page
+    }
+
+    # Channels we explicitly don't support (none currently)
+    UNSUPPORTED_CHANNELS: set = set()
+
     def __init__(self) -> None:
-        self.api_key = os.getenv("WAVE_API_KEY", "")
-        self.webhook_secret = os.getenv("WAVE_WEBHOOK_SECRET", "")
-        self.base_url = os.getenv("WAVE_API_URL", "https://api.wave.com/v1")
-        if not self.api_key:
-            logger.warning("WAVE_API_KEY not set -- Wave payments will fail")
+        self.merchant_id = os.getenv("PAIEMENTPRO_MERCHANT_ID", "")
+        self.webhook_secret = os.getenv("PAIEMENTPRO_WEBHOOK_SECRET", "")
+        self.wsdl_url = os.getenv("PAIEMENTPRO_WSDL_URL", self.WSDL_URL)
+        self.currency_code = os.getenv("PAIEMENTPRO_CURRENCY_CODE", "952")
+        self._soap_client = None  # lazy-init
+
+        if not self.merchant_id:
+            logger.warning(
+                "PAIEMENTPRO_MERCHANT_ID not set — payments will fail"
+            )
+
+    def _get_soap_client(self):
+        """Lazily create the zeep SOAP client."""
+        if self._soap_client is None:
+            from zeep import Client
+            from zeep.transports import Transport
+            from requests import Session
+
+            session = Session()
+            session.timeout = 30
+            transport = Transport(session=session)
+            self._soap_client = Client(wsdl=self.wsdl_url, transport=transport)
+        return self._soap_client
+
+    def _generate_hashcode(self, merchant_id: str, reference: str, amount: str) -> str:
+        """Generate HMAC-SHA256 hashcode for initTransact / verification."""
+        if not self.webhook_secret:
+            return ""
+        message = f"{merchant_id}{reference}{amount}"
+        return hmac.HMAC(
+            self.webhook_secret.encode("utf-8"),
+            message.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
 
     async def initiate_payment(
         self,
@@ -127,81 +185,148 @@ class WavePaymentAdapter(PaymentAdapter):
         idempotency_key: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        import httpx
+        import asyncio
 
-        payload = {
-            "amount": str(amount),
-            "currency": currency,
-            "error_url": metadata.get("error_url", "") if metadata else "",
-            "success_url": metadata.get("success_url", "") if metadata else "",
-            "client_reference": idempotency_key,
+        metadata = metadata or {}
+
+        # Determine channel
+        channel_key = metadata.get("channel", metadata.get("payment_channel", "all")).lower()
+        if channel_key in self.UNSUPPORTED_CHANNELS:
+            return {
+                "provider_ref": "",
+                "checkout_url": None,
+                "status": "failed",
+                "error": f"Channel '{channel_key}' is not supported by PaiementPro. Use a dedicated adapter.",
+            }
+        channel = self.CHANNEL_MAP.get(channel_key, "")
+
+        # Build reference
+        reference = idempotency_key or uuid.uuid4().hex
+
+        # Required customer fields
+        customer_email = metadata.get("customer_email", "")
+        customer_first_name = metadata.get("customer_first_name", "")
+        customer_last_name = metadata.get("customer_last_name", "")
+        customer_phone = metadata.get("customer_phone", "")
+
+        # Callback URLs
+        notify_url = metadata.get("notify_url", "")
+        return_url = metadata.get("return_url", "")
+        return_context = metadata.get("return_context", "")
+        customer_id = metadata.get("customer_id", "")
+
+        amount_str = str(amount)
+        hashcode = self._generate_hashcode(self.merchant_id, reference, amount_str)
+
+        soap_params = {
+            "merchantId": self.merchant_id,
+            "countryCurrencyCode": self.currency_code,
+            "referenceNumber": reference,
+            "amount": amount_str,
+            "channel": channel,
+            "customerId": customer_id,
+            "customerEmail": customer_email,
+            "customerFirstName": customer_first_name,
+            "customerLastname": customer_last_name,
+            "customerPhoneNumber": customer_phone,
+            "description": description or "",
+            "notificationURL": notify_url,
+            "returnURL": return_url,
+            "returnContext": return_context,
+            "hashcode": hashcode,
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    f"{self.base_url}/checkout/sessions",
-                    json=payload,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                        "Idempotency-Key": idempotency_key,
-                    },
-                )
-                data = resp.json()
-                if resp.status_code in (200, 201):
-                    return {
-                        "provider_ref": data.get("id", ""),
-                        "checkout_url": data.get("wave_launch_url", ""),
-                        "status": "initiated",
-                    }
-                else:
-                    logger.error(f"Wave initiate failed: {resp.status_code} {data}")
-                    return {
-                        "provider_ref": "",
-                        "checkout_url": None,
-                        "status": "failed",
-                        "error": data.get("message", "Unknown Wave error"),
-                    }
+            loop = asyncio.get_running_loop()
+            client = self._get_soap_client()
+            response = await loop.run_in_executor(
+                None, lambda: client.service.initTransact(**soap_params)
+            )
+
+            code = getattr(response, "Code", None)
+            session_id = getattr(response, "Sessionid", None)
+            desc = getattr(response, "Description", "")
+
+            if code == 0 and session_id:
+                checkout_url = f"{self.CHECKOUT_BASE}?sessionid={session_id}"
+                return {
+                    "provider_ref": reference,
+                    "checkout_url": checkout_url,
+                    "status": "initiated",
+                    "session_id": session_id,
+                }
+            else:
+                error_msg = f"PaiementPro initTransact error (code={code}): {desc}"
+                logger.error(error_msg)
+                return {
+                    "provider_ref": reference,
+                    "checkout_url": None,
+                    "status": "failed",
+                    "error": error_msg,
+                }
         except Exception as e:
-            logger.exception("Wave API call failed")
-            return {"provider_ref": "", "checkout_url": None, "status": "failed", "error": str(e)}
+            logger.exception("PaiementPro SOAP initTransact call failed")
+            return {
+                "provider_ref": reference,
+                "checkout_url": None,
+                "status": "failed",
+                "error": str(e),
+            }
 
     async def check_status(self, provider_ref: str) -> Dict[str, Any]:
-        import httpx
+        """PaiementPro has no status-check endpoint.
 
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(
-                    f"{self.base_url}/checkout/sessions/{provider_ref}",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                )
-                data = resp.json()
-                wave_status = data.get("payment_status", "unknown")
-                status_map = {
-                    "succeeded": "captured",
-                    "pending": "initiated",
-                    "failed": "failed",
-                    "cancelled": "failed",
-                }
-                return {
-                    "status": status_map.get(wave_status, "initiated"),
-                    "raw": data,
-                }
-        except Exception as e:
-            logger.exception("Wave status check failed")
-            return {"status": "unknown", "raw": {"error": str(e)}}
+        Status is updated only via the notification callback (webhook).
+        Return unknown and log a warning so callers know to rely on webhooks.
+        """
+        logger.warning(
+            "PaiementPro does not provide a status-check API. "
+            "Payment status for ref=%s must come from the notification webhook.",
+            provider_ref,
+        )
+        return {
+            "status": "unknown",
+            "raw": {
+                "provider_ref": provider_ref,
+                "note": "PaiementPro has no status query endpoint; rely on webhook notifications.",
+            },
+        }
 
     def verify_webhook_signature(
-        self, payload_bytes: bytes, signature: str
+        self,
+        payload_bytes: bytes,
+        signature: str,
+        parsed_payload: Optional[Dict[str, Any]] = None,
     ) -> bool:
+        """Verify the hashcode from a PaiementPro notification callback.
+
+        The expected hashcode is HMAC-SHA256(merchantId + referenceNumber + amount)
+        using PAIEMENTPRO_WEBHOOK_SECRET as the key.
+
+        For this to work, the caller must pass the hashcode from the notification
+        as ``signature``, and ``payload_bytes`` must be the concatenation of
+        merchantId + referenceNumber + amount (the same fields used to generate it).
+        """
         if not self.webhook_secret:
-            logger.error("WAVE_WEBHOOK_SECRET not configured")
+            logger.error("PAIEMENTPRO_WEBHOOK_SECRET not configured — cannot verify webhook")
             return False
-        expected = hmac.new(
-            self.webhook_secret.encode(), payload_bytes, hashlib.sha256
+
+        if parsed_payload:
+            merchant_id = str(parsed_payload.get("merchantId", ""))
+            reference = str(parsed_payload.get("referenceNumber", ""))
+            amount = str(parsed_payload.get("amount", ""))
+            if merchant_id and reference and amount:
+                payload_bytes = f"{merchant_id}{reference}{amount}".encode("utf-8")
+
+        if not signature:
+            return False
+
+        expected = hmac.HMAC(
+            self.webhook_secret.encode("utf-8"),
+            payload_bytes,
+            hashlib.sha256,
         ).hexdigest()
-        return hmac.compare_digest(expected, signature)
+        return hmac.compare_digest(expected.lower(), str(signature).lower())
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +336,9 @@ class WavePaymentAdapter(PaymentAdapter):
 def get_payment_adapter() -> PaymentAdapter:
     """Return the appropriate adapter based on PAYMENT_PROVIDER env var."""
     provider = os.getenv("PAYMENT_PROVIDER", "mock").lower()
+    if provider == "paiementpro":
+        return PaiementProAdapter()
     if provider == "wave":
-        return WavePaymentAdapter()
+        logger.info("PAYMENT_PROVIDER=wave is deprecated, use paiementpro instead")
+        return PaiementProAdapter()
     return MockPaymentAdapter()

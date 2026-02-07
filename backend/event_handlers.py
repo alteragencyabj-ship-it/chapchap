@@ -159,26 +159,26 @@ async def on_request_completed(request_id: str, client_id: str, artisan_id: str,
 # ===== request.confirmed =====
 @on("request.confirmed")
 async def on_request_confirmed(request_id: str, client_id: str, artisan_id: str, **kwargs):
-    """The big one: consume credit, update level, notify artisan."""
-    # Determine amount
-    request = kwargs.get("request", {})
-    price_str = request.get("service_price") or request.get("budget") or 0
-    try:
-        amount = float(str(price_str).replace(",", "").split("-")[0])
-    except (ValueError, TypeError):
-        amount = 0.0
+    """Notify artisan and block reminders after client confirmation.
 
-    # 1. Consume credit
-    if amount > 0:
-        credit_result = await credit_system.consume_credit(artisan_id, request_id, amount)
-        earning = credit_result.get("artisan_earning", 0)
-    else:
-        earning = 0
+    Le credit est desormais consomme au moment du release paiement (escrow).
+    """
+    payment_intent = await db_module.db.payment_intents.find_one(
+        {"request_id": request_id},
+        sort=[("created_at", -1)],
+    )
+    earning = 0
+    if payment_intent and payment_intent.get("status") == "captured":
+        from payments.adapter import get_payment_adapter
+        from payments.service import PaymentService
 
-    # 2. Update artisan level
-    await credit_system.update_level(artisan_id)
+        svc = PaymentService(get_payment_adapter())
+        release_result = await svc.release_to_artisan(str(payment_intent["_id"]))
+        earning = release_result.get("artisan_payout", payment_intent.get("artisan_payout", 0))
+    elif payment_intent and payment_intent.get("status") == "released":
+        earning = payment_intent.get("artisan_payout", 0)
 
-    # 3. Notify artisan
+    # 1. Notify artisan
     from notification_service import send_notification
     await send_notification(
         recipient_id=artisan_id,
@@ -187,7 +187,7 @@ async def on_request_confirmed(request_id: str, client_id: str, artisan_id: str,
         template_vars={"earning": f"{earning:,.0f}"},
     )
 
-    # 4. Check if artisan is now blocked
+    # 2. Check if artisan is now blocked
     credit_status = await credit_system.check_can_accept_mission(artisan_id)
     if not credit_status["can_accept"]:
         await send_notification(
@@ -197,7 +197,7 @@ async def on_request_confirmed(request_id: str, client_id: str, artisan_id: str,
             template_vars={"amount": f"{credit_status['commission_due']:,.0f}"},
         )
 
-    # 5. Cancel confirm reminder
+    # 3. Cancel confirm reminder
     from scheduler import cancel_scheduled
     await cancel_scheduled(f"confirm_remind:{request_id}")
 

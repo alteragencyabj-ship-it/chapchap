@@ -394,13 +394,17 @@ class ArtisanLevel(BaseModel):
 class ArtisanCredit(BaseModel):
     id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
     artisan_id: str
-    level: str = "bronze"
-    credit_remaining: int = 3
-    credit_max: int = 3
+    level: str = "fixed"
+    credit_remaining: int = 5
+    credit_max: int = 5
     commission_due: float = 0.0
-    commission_rate: float = 0.15
+    commission_rate: Optional[float] = None
+    commission_per_mission: int = 2000
+    missions_completed_in_cycle: int = 0
     is_blocked: bool = False
-    blocked_at: Optional[datetime] = None
+    blocked_at: Optional[datetime] = None  # legacy
+    blocked_since: Optional[datetime] = None
+    last_reminder_sent: Optional[datetime] = None
     total_earned: float = 0.0
     total_paid: float = 0.0
     last_payment_at: Optional[datetime] = None
@@ -427,8 +431,8 @@ class CommissionPayment(BaseModel):
         json_encoders = {ObjectId: str}
 
 class CommissionPaymentCreate(BaseModel):
-    amount: float
-    payment_method: str
+    amount: Optional[float] = None
+    payment_method: Optional[str] = None
 
 class MissionTransaction(BaseModel):
     id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
@@ -448,11 +452,18 @@ class MissionTransaction(BaseModel):
 
 class CreditStatus(BaseModel):
     artisan_id: str
-    level: str
+    level: str = "fixed"
     credit_remaining: int
     credit_max: int
     commission_due: float
+    commission_per_mission: int = 2000
+    cycle_commission_due: int = 10000
+    missions_completed_in_cycle: int = 0
+    missions_remaining_in_cycle: int = 0
     is_blocked: bool
     can_accept_mission: bool
-    next_level: Optional[str] = None
-    missions_to_next_level: Optional[int] = None
+    blocked_since: Optional[datetime] = None
+    last_reminder_sent: Optional[datetime] = None
+    needs_payment_reminder: bool = False
+    suspension_message: Optional[str] = None
+    pay_button_label: Optional[str] = None

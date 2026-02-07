@@ -116,6 +116,15 @@ async def connect_to_mongo():
     await db.payment_events.create_index("payment_intent_id")
     await db.payment_events.create_index("created_at")
 
+    # Artisan credits
+    await db.artisan_credits.create_index("artisan_id", unique=True)
+    await db.artisan_credits.create_index([("is_blocked", 1), ("blocked_since", 1)])
+    await db.artisan_credits.create_index("commission_due")
+
+    # Credit/commission history
+    await db.mission_transactions.create_index([("artisan_id", 1), ("created_at", -1)])
+    await db.commission_payments.create_index([("artisan_id", 1), ("created_at", -1)])
+
     print("[OK] Connected to MongoDB")
 
 async def close_mongo_connection():

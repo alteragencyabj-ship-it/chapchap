@@ -8,9 +8,10 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import List, Optional
-from datetime import datetime
+from datetime import UTC, datetime
 from bson import ObjectId
 import bcrypt
+from functools import lru_cache
 
 import database as db_module
 from database import connect_to_mongo, close_mongo_connection
@@ -472,7 +473,18 @@ async def health_check():
 # ==================== CREDIT SYSTEM ROUTES ====================
 
 import credit_system
-from models import CommissionPaymentCreate, CreditStatus
+from models import CreditStatus
+from payments.adapter import get_payment_adapter
+from payments.models import (
+    CommissionPaymentCheckoutRequest,
+    CommissionPaymentCheckoutResponse,
+)
+from payments.service import PaymentService
+
+
+@lru_cache(maxsize=1)
+def _get_payment_service_for_credit() -> PaymentService:
+    return PaymentService(get_payment_adapter())
 
 @api_router.get("/credit/status", response_model=CreditStatus)
 async def get_credit_status(current_user: dict = Depends(get_current_user)):
@@ -492,23 +504,61 @@ async def check_can_accept(current_user: dict = Depends(get_current_user)):
     result = await credit_system.check_can_accept_mission(str(user["_id"]))
     return result
 
-@api_router.post("/credit/pay")
-async def pay_commission(
-    payment: CommissionPaymentCreate,
-    current_user: dict = Depends(get_current_user)
+@api_router.post("/credit/pay-commission", response_model=CommissionPaymentCheckoutResponse)
+async def pay_commission_checkout(
+    payload: Optional[CommissionPaymentCheckoutRequest] = None,
+    current_user: dict = Depends(get_current_user),
 ):
-    """Pay commission to unlock account"""
+    """Demarre le paiement de commission artisan (montant exact du uniquement)."""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
     if user["role"] != "artisan":
         raise HTTPException(status_code=403, detail="Only artisans can pay commissions")
-    if payment.amount <= 0:
-        raise HTTPException(status_code=400, detail="Amount must be positive")
-    result = await credit_system.pay_commission(
-        artisan_id=str(user["_id"]),
-        amount=payment.amount,
-        payment_method=payment.payment_method
+
+    artisan_id = str(user["_id"])
+    credit_status = await credit_system.get_credit_status(artisan_id)
+
+    if not credit_status.get("is_blocked"):
+        raise HTTPException(status_code=400, detail="Votre compte n'est pas bloque")
+
+    amount_due = int(credit_status.get("commission_due", 0))
+    if amount_due <= 0:
+        raise HTTPException(status_code=400, detail="Aucune commission due")
+
+    payload = payload or CommissionPaymentCheckoutRequest()
+
+    payment_channel = payload.payment_channel.value
+    idempotency_key = payload.idempotency_key or (
+        f"credit-{artisan_id}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
     )
-    return result
+
+    payment_service = _get_payment_service_for_credit()
+    result = await payment_service.initiate_commission_payment(
+        artisan_id=artisan_id,
+        amount=amount_due,
+        idempotency_key=idempotency_key,
+        payment_channel=payment_channel,
+    )
+
+    if result.get("status") == "failed":
+        detail = result.get("error", "Payment provider error")
+        raise HTTPException(status_code=502, detail=detail)
+
+    return CommissionPaymentCheckoutResponse(
+        payment_intent_id=result["payment_intent_id"],
+        checkout_url=result.get("checkout_url"),
+        status=result["status"],
+        amount=int(result["amount"]),
+        provider=("paiementpro" if "paiementpro" in str(result["provider"]).lower() else "mock"),
+    )
+
+
+@api_router.post("/credit/pay", response_model=CommissionPaymentCheckoutResponse)
+async def pay_commission_checkout_legacy(
+    payload: Optional[CommissionPaymentCheckoutRequest] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Alias legacy de /credit/pay-commission."""
+    return await pay_commission_checkout(payload, current_user)
 
 @api_router.get("/credit/transactions")
 async def get_transactions(

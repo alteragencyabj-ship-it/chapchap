@@ -253,9 +253,11 @@ async def adjust_credits(
         update_set["credit_remaining"] = body.credits
     if body.commission_due is not None:
         update_set["commission_due"] = body.commission_due
-        # Unblock if commission_due drops below threshold
-        if body.commission_due < credit_system.BLOCK_THRESHOLD:
+        # Nouveau modele: debloquer uniquement si commission due entierement reglee
+        if body.commission_due <= 0:
             update_set["is_blocked"] = False
+            update_set["blocked_since"] = None
+            update_set["blocked_at"] = None
 
     update_set["updated_at"] = datetime.utcnow()
 

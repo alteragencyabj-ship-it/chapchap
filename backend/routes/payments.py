@@ -2,7 +2,7 @@
 Payment routes -- escrow-based payment flow.
 
 POST /api/payments/initiate   -- Create payment intent (client)
-POST /api/payments/webhook     -- Receive provider webhook (no auth, signature-verified)
+POST /api/payments/webhook    -- Receive provider webhook (no auth, signature-verified)
 GET  /api/payments/status/{id} -- Get payment status (authenticated)
 GET  /api/payments/by-request/{request_id} -- Get payment for a request (authenticated)
 """
@@ -10,26 +10,93 @@ GET  /api/payments/by-request/{request_id} -- Get payment for a request (authent
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
+
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+import database as db_module
 from auth import get_current_user
 from payments.adapter import get_payment_adapter
-from payments.service import PaymentService
 from payments.models import (
     PaymentInitiateRequest,
     PaymentInitiateResponse,
+    PaymentRefundResponse,
+    PaymentReleaseResponse,
     PaymentStatusResponse,
+    WebhookPayload,
 )
-import database as db_module
-from bson import ObjectId
+from payments.service import PaymentService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
 
+@lru_cache(maxsize=1)
 def _get_service() -> PaymentService:
+    """Singleton service to reuse adapter internals (notably SOAP client cache)."""
     return PaymentService(get_payment_adapter())
+
+
+def _to_payment_status_response(intent: dict) -> PaymentStatusResponse:
+    provider_raw = str(intent.get("provider", "mock")).lower()
+    if "paiementpro" in provider_raw:
+        provider_value = "paiementpro"
+    elif "wave" in provider_raw:
+        provider_value = "wave"
+    else:
+        provider_value = "mock"
+
+    return PaymentStatusResponse(
+        payment_intent_id=intent["_id"],
+        request_id=intent.get("request_id"),
+        status=intent["status"],
+        amount=int(intent.get("amount", 0)),
+        commission_amount=int(intent.get("commission_amount", 0)),
+        artisan_payout=int(intent.get("artisan_payout", 0)),
+        provider=provider_value,
+        provider_ref=intent.get("provider_ref"),
+        payment_type=intent.get("payment_type"),
+        payment_channel=intent.get("payment_channel"),
+        checkout_url=intent.get("checkout_url"),
+        created_at=intent.get("created_at"),
+        captured_at=intent.get("captured_at"),
+        released_at=intent.get("released_at"),
+        refunded_at=intent.get("refunded_at"),
+    )
+
+
+async def _parse_webhook_payload(request: Request) -> dict:
+    content_type = (request.headers.get("content-type") or "").lower()
+
+    payload: dict
+    if "application/json" in content_type:
+        try:
+            payload = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+    else:
+        try:
+            form_data = await request.form()
+            payload = {k: str(v) for k, v in form_data.items()}
+        except Exception:
+            try:
+                payload = await request.json()
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="Invalid webhook payload") from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid webhook payload")
+
+    try:
+        model = WebhookPayload(**payload)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid webhook schema: {exc}") from exc
+
+    normalized = model.dict(exclude_none=True)
+    normalized["raw"] = payload
+    return normalized
 
 
 @router.post("/initiate", response_model=PaymentInitiateResponse)
@@ -39,7 +106,6 @@ async def initiate_payment(
 ):
     """Initiate escrow payment for a service request."""
 
-    # Verify the request exists and belongs to the client
     user = await db_module.db.users.find_one({"email": current_user["email"]})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -71,10 +137,14 @@ async def initiate_payment(
         artisan_id=artisan_id,
         amount=data.amount,
         idempotency_key=data.idempotency_key,
+        payment_channel=data.payment_channel.value,
     )
 
     if result.get("status") == "failed":
-        raise HTTPException(status_code=502, detail="Payment provider error")
+        detail = result.get("error", "Payment provider error")
+        if "greater than fixed commission" in detail:
+            raise HTTPException(status_code=400, detail=detail)
+        raise HTTPException(status_code=502, detail=detail)
 
     return PaymentInitiateResponse(
         payment_intent_id=result["payment_intent_id"],
@@ -83,33 +153,52 @@ async def initiate_payment(
         amount=result["amount"],
         commission_amount=result["commission_amount"],
         artisan_payout=result["artisan_payout"],
-        provider=result["provider"],
+        provider=("paiementpro" if "paiementpro" in str(result["provider"]).lower() else "mock"),
     )
 
 
 @router.post("/webhook")
 async def payment_webhook(request: Request):
-    """Receive webhook from payment provider. No JWT auth -- verified via signature."""
+    """Receive webhook from provider. No JWT auth -- verified via signature/hashcode."""
 
     body = await request.body()
-    signature = request.headers.get("X-Wave-Signature", "") or request.headers.get("X-Webhook-Signature", "")
+    parsed_payload = await _parse_webhook_payload(request)
 
-    try:
-        payload = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    header_signature = (
+        request.headers.get("X-Wave-Signature")
+        or request.headers.get("X-PaiementPro-Signature")
+        or request.headers.get("X-Webhook-Signature")
+        or ""
+    )
+
+    signature = header_signature
+    payload_bytes = body
+
+    # PaiementPro hashcode verification is based on merchantId+referenceNumber+amount.
+    merchant_id = parsed_payload.get("merchantId")
+    reference = parsed_payload.get("referenceNumber")
+    amount = parsed_payload.get("amount")
+    hashcode = parsed_payload.get("hashcode")
+    if merchant_id and reference and amount and hashcode:
+        signature = str(hashcode)
+        payload_bytes = f"{merchant_id}{reference}{amount}".encode("utf-8")
 
     svc = _get_service()
-    result = await svc.process_webhook(body, signature, payload)
+    result = await svc.process_webhook(payload_bytes, signature, parsed_payload)
 
     if result.get("error"):
-        logger.warning(f"Webhook processing error: {result['error']}")
+        logger.warning("Webhook processing error: %s", result["error"])
         raise HTTPException(status_code=400, detail=result["error"])
 
-    return {"status": "ok", "payment_intent_id": result.get("payment_intent_id")}
+    return {
+        "status": "ok",
+        "payment_intent_id": result.get("payment_intent_id"),
+        "processed": result.get("processed", True),
+        "duplicate": result.get("duplicate", False),
+    }
 
 
-@router.get("/status/{payment_intent_id}")
+@router.get("/status/{payment_intent_id}", response_model=PaymentStatusResponse)
 async def get_payment_status(
     payment_intent_id: str,
     current_user: dict = Depends(get_current_user),
@@ -122,17 +211,77 @@ async def get_payment_status(
     if not intent:
         raise HTTPException(status_code=404, detail="Payment intent not found")
 
-    # Only client, artisan, or admin can view
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    user_id = str(user["_id"]) if user else ""
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_id = str(user["_id"])
     if intent.get("client_id") != user_id and intent.get("artisan_id") != user_id:
         if not user.get("admin_role"):
             raise HTTPException(status_code=403, detail="Not authorized")
 
-    return intent
+    return _to_payment_status_response(intent)
 
 
-@router.get("/by-request/{request_id}")
+@router.post("/release/{payment_intent_id}", response_model=PaymentReleaseResponse)
+async def release_payment(
+    payment_intent_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Release escrow to artisan (client owner or admin)."""
+
+    svc = _get_service()
+    intent = await svc.get_status(payment_intent_id)
+    if not intent:
+        raise HTTPException(status_code=404, detail="Payment intent not found")
+
+    user = await db_module.db.users.find_one({"email": current_user["email"]})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_id = str(user["_id"])
+    if intent.get("client_id") != user_id and not user.get("admin_role"):
+        raise HTTPException(status_code=403, detail="Only client owner or admin can release")
+
+    result = await svc.release_to_artisan(payment_intent_id)
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return PaymentReleaseResponse(
+        payment_intent_id=result["payment_intent_id"],
+        status=result["status"],
+        artisan_payout=int(result.get("artisan_payout", 0)),
+        commission_amount=int(result.get("commission_amount", 0)),
+        duplicate=bool(result.get("duplicate", False)),
+        credit=result.get("credit"),
+    )
+
+
+@router.post("/refund/{payment_intent_id}", response_model=PaymentRefundResponse)
+async def refund_payment(
+    payment_intent_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Rembourser un paiement capture (admin uniquement)."""
+
+    user = await db_module.db.users.find_one({"email": current_user["email"]})
+    if not user or not user.get("admin_role"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    svc = _get_service()
+    result = await svc.refund_payment(payment_intent_id)
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return PaymentRefundResponse(
+        payment_intent_id=result["payment_intent_id"],
+        status=result["status"],
+        amount=int(result["amount"]),
+        duplicate=bool(result.get("duplicate", False)),
+    )
+
+
+@router.get("/by-request/{request_id}", response_model=PaymentStatusResponse)
 async def get_payment_by_request(
     request_id: str,
     current_user: dict = Depends(get_current_user),
@@ -146,9 +295,12 @@ async def get_payment_by_request(
         raise HTTPException(status_code=404, detail="No payment found for this request")
 
     user = await db_module.db.users.find_one({"email": current_user["email"]})
-    user_id = str(user["_id"]) if user else ""
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_id = str(user["_id"])
     if intent.get("client_id") != user_id and intent.get("artisan_id") != user_id:
         if not user.get("admin_role"):
             raise HTTPException(status_code=403, detail="Not authorized")
 
-    return intent
+    return _to_payment_status_response(intent)

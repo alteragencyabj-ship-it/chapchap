@@ -22,6 +22,14 @@ services:
         sync: false
       - key: PAYMENT_PROVIDER
         value: mock
+      - key: PAIEMENTPRO_MERCHANT_ID
+        sync: false
+      - key: PAIEMENTPRO_WEBHOOK_SECRET
+        sync: false
+      - key: PAIEMENTPRO_WSDL_URL
+        value: https://www.paiementpro.net/webservice/OnlineServicePayment_v2.php?wsdl
+      - key: PAIEMENTPRO_CURRENCY_CODE
+        value: "952"
       - key: PYTHON_VERSION
         value: "3.11.0"
     healthCheckPath: /api/health

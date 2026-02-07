@@ -1,4 +1,4 @@
-# ChapChap -- Deployment Guide
+# Servicio -- Deployment Guide
 
 ## Architecture Decision: Escrow at Acceptance
 
@@ -8,7 +8,7 @@
 - The artisan knows funds are secured before starting work.
 - Client pays upfront into escrow (not charged until confirmation).
 - Release happens after client confirms satisfaction (or auto-release after 72h).
-- Platform commission is deducted at release time based on artisan's credit tier.
+- Platform commission is fixed at 2 000 FCFA per mission (cycle of 5 missions).
 - This is the standard marketplace escrow pattern (Uber, Fiverr, etc.).
 
 If service is disputed, admin resolves and can trigger refund or partial release.
@@ -22,7 +22,7 @@ If service is disputed, admin resolves and can trigger refund or partial release
 | Backend | **Render** (Web Service) | Free tier for staging, Starter ($7/mo) for prod |
 | Database | **MongoDB Atlas** | M0 Free (staging), M10+ (prod) |
 | Frontend | **EAS Build** + **Expo Updates** | Free for dev, Production ($99/mo) |
-| Payments | **Wave CI** | Commission-based, no monthly fee |
+| Payments | **PaiementPro** | SOAP API (merchant account required) |
 | Push | **Expo Push** (via FCM/APNs) | Free (included with EAS) |
 
 ---
@@ -66,9 +66,11 @@ If service is disputed, admin resolves and can trigger refund or partial release
 | `HOST` | No | `0.0.0.0` | Default: 0.0.0.0 |
 | `PORT` | No | `10000` | Render sets this automatically |
 | `ALLOWED_ORIGINS` | Yes | `https://chapchap.ci,https://staging.chapchap.ci` | Comma-separated, NO wildcard in prod |
-| `PAYMENT_PROVIDER` | Yes | `mock` (staging) or `wave` (prod) | Provider to use |
-| `WAVE_API_KEY` | Prod only | (from Wave dashboard) | Wave CI merchant API key |
-| `WAVE_WEBHOOK_SECRET` | Prod only | (from Wave dashboard) | For webhook signature verification |
+| `PAYMENT_PROVIDER` | Yes | `mock` (staging) or `paiementpro` (prod) | Provider to use |
+| `PAIEMENTPRO_MERCHANT_ID` | Prod only | `PP-F6917` | PaiementPro merchant ID |
+| `PAIEMENTPRO_WEBHOOK_SECRET` | Prod only | (from PaiementPro dashboard) | For hashcode verification |
+| `PAIEMENTPRO_WSDL_URL` | No | `https://www.paiementpro.net/webservice/OnlineServicePayment_v2.php?wsdl` | Default production WSDL |
+| `PAIEMENTPRO_CURRENCY_CODE` | No | `952` | XOF (FCFA) |
 | `EXPO_ACCESS_TOKEN` | Optional | (from expo.dev) | For server-side push if needed |
 
 ### Generate JWT Secret (PowerShell)
@@ -152,14 +154,14 @@ npx eas-cli update --branch staging --message "Bug fix v1.0.1"
 
 ---
 
-## 4. Wave Payment Integration (Production)
+## 4. PaiementPro Integration (Production)
 
 ### Setup
-1. Register merchant account at https://business.wave.com
-2. Get API credentials from Wave dashboard
+1. Register merchant account at https://www.paiementpro.net
+2. Get merchant credentials from PaiementPro dashboard
 3. Configure webhook URL: `https://api.chapchap.ci/api/payments/webhook`
-4. Set `WAVE_API_KEY` and `WAVE_WEBHOOK_SECRET` in Render env vars
-5. Set `PAYMENT_PROVIDER=wave` in Render env vars
+4. Set `PAIEMENTPRO_MERCHANT_ID` and `PAIEMENTPRO_WEBHOOK_SECRET` in Render env vars
+5. Set `PAYMENT_PROVIDER=paiementpro` in Render env vars
 
 ### Test in Staging
 - Keep `PAYMENT_PROVIDER=mock` in staging
@@ -167,8 +169,8 @@ npx eas-cli update --branch staging --message "Bug fix v1.0.1"
 - Test E2E flow without real money
 
 ### Webhook Security
-- Wave signs webhooks with HMAC-SHA256
-- Signature in `X-Wave-Signature` header
+- PaiementPro sends `hashcode` as HMAC-SHA256(merchantId + referenceNumber + amount)
+- Signature source is payload field `hashcode`
 - Backend verifies before processing
 
 ---
@@ -220,8 +222,8 @@ npx eas-cli update --branch staging --message "Bug fix v1.0.1"
 - [ ] `ENVIRONMENT=production`
 - [ ] `JWT_SECRET` is 64+ char random string
 - [ ] `ALLOWED_ORIGINS` = production domain only
-- [ ] `PAYMENT_PROVIDER=wave`
-- [ ] Wave credentials set and webhook configured
+- [ ] `PAYMENT_PROVIDER=paiementpro`
+- [ ] PaiementPro credentials set and webhook configured
 - [ ] FCM/APNs credentials uploaded to EAS
 - [ ] HTTPS enforced everywhere
 - [ ] Rate limiting active (60 req/min per IP)
