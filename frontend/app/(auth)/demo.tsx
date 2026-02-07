@@ -45,16 +45,18 @@ export default function Demo() {
 
       const { access_token, user } = response.data;
       await setToken(access_token);
-      setUser(user);
       await AsyncStorage.setItem('user_data', JSON.stringify(user));
+      setUser(user);
 
       console.log('✅ Redirecting to tabs...');
-      // Redirect based on user role
-      if (user.role === 'artisan') {
-        router.replace('/(tabs)/artisan-home');
-      } else {
-        router.replace('/(tabs)/home');
-      }
+      // Small delay to let zustand propagate state before navigation
+      setTimeout(() => {
+        if (user.role === 'artisan') {
+          router.replace('/(tabs)/artisan-home');
+        } else {
+          router.replace('/(tabs)/home');
+        }
+      }, 100);
     } catch (error: any) {
       console.error('❌ Demo login error:', error);
       console.error('❌ Error message:', error.message);

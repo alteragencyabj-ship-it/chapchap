@@ -6,13 +6,20 @@ import { COLORS } from '../src/config/constants';
 
 export default function Index() {
   const router = useRouter();
-  const { isLoading } = useAuthStore();
+  const { isLoading, user } = useAuthStore();
 
   useEffect(() => {
     if (!isLoading) {
-      // Always go to welcome screen first
-      // This allows users to choose between demo mode or login
-      router.replace('/(auth)/welcome');
+      if (user) {
+        // User already logged in — go to correct home
+        if (user.role === 'artisan') {
+          router.replace('/(tabs)/artisan-home');
+        } else {
+          router.replace('/(tabs)/home');
+        }
+      } else {
+        router.replace('/(auth)/welcome');
+      }
     }
   }, [isLoading]);
 
