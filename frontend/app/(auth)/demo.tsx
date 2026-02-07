@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -106,7 +106,7 @@ export default function Demo() {
 
         <View style={styles.header}>
           <Ionicons name="flash" size={60} color={COLORS.white} />
-          <Text style={styles.title}>Découvrez Servicio</Text>
+          <Text style={styles.title}>Découvrez ARTISAN</Text>
           <Text style={styles.subtitle}>
             Testez l'app avec un compte démo
           </Text>

@@ -1,4 +1,4 @@
-# ChapChap (Artisan Connect)
+﻿# ARTISAN
 
 Marketplace mobile connectant clients et artisans qualifies en Cote d'Ivoire.
 
@@ -16,7 +16,7 @@ Marketplace mobile connectant clients et artisans qualifies en Cote d'Ivoire.
 
 ### Backend
 ```powershell
-cd C:\klawd-data\projects\chapchap\CHAPCHAP-main
+cd C:\klawd-data\projects\servicio-app
 
 # Create venv + install deps
 python -m venv .venv
@@ -34,7 +34,7 @@ Copy-Item backend\.env.example backend\.env
 
 ### Frontend
 ```powershell
-cd C:\klawd-data\projects\chapchap\CHAPCHAP-main\frontend
+cd C:\klawd-data\projects\servicio-app\frontend
 
 # Install deps
 yarn install
@@ -50,7 +50,7 @@ npm start
 
 ### Tests
 ```powershell
-cd C:\klawd-data\projects\chapchap\CHAPCHAP-main
+cd C:\klawd-data\projects\servicio-app
 
 # Backend tests (requires MongoDB running)
 .\.venv\Scripts\python.exe -m pytest tests/ -q
@@ -64,7 +64,7 @@ cd frontend && npm run lint
 ## Project Structure
 
 ```
-CHAPCHAP-main/
+servicio-app/
   backend/
     server.py              # FastAPI app + legacy routes
     database.py            # MongoDB connection + indexes
@@ -76,10 +76,10 @@ CHAPCHAP-main/
     event_handlers.py      # Event -> notification/credit cascade
     notification_service.py # Multi-channel notifications
     scheduler.py           # Delayed notification scheduler
-    credit_system.py       # Artisan credit tiers + commission
+    credit_system.py       # Artisan fixed-cycle credits + commission
     socketio_server.py     # Real-time chat
     middleware.py           # Correlation ID + rate limiting
-    payments/              # Escrow payment system (Wave adapter + mock)
+    payments/              # Escrow payment system (PaiementPro adapter + mock)
     routes/                # Modular API routes
     scripts/               # Migration + smoke test scripts
   frontend/
@@ -132,3 +132,4 @@ See [RUNBOOK.md](RUNBOOK.md) for operations, incidents, and rollback procedures.
 ## Environment Variables
 
 See `backend/.env.example` and `frontend/.env.example` for complete lists.
+

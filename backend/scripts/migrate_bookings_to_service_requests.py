@@ -1,4 +1,4 @@
-"""
+﻿"""
 Migrate legacy `bookings` documents to `service_requests`.
 
 Why:
@@ -16,7 +16,7 @@ Notes:
   in migrated service requests (the model allows it for legacy data).
 
 Usage (PowerShell):
-  cd C:\klawd-data\projects\chapchap\CHAPCHAP-main\backend
+  cd C:\klawd-data\projects\servicio-app\backend
   ..\.venv\Scripts\python.exe .\scripts\migrate_bookings_to_service_requests.py --dry-run
   ..\.venv\Scripts\python.exe .\scripts\migrate_bookings_to_service_requests.py --apply --limit 100
 """
@@ -253,4 +253,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 

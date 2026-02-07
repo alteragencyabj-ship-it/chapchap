@@ -1,4 +1,4 @@
-# Servicio -- Deployment Guide
+﻿# ARTISAN -- Deployment Guide
 
 ## Architecture Decision: Escrow at Acceptance
 
@@ -31,14 +31,14 @@ If service is disputed, admin resolves and can trigger refund or partial release
 
 ### Staging
 1. Create free cluster at https://cloud.mongodb.com
-2. Database name: `chapchap_staging`
-3. Create user: `chapchap_staging` with read/write access
+2. Database name: `artisan_staging`
+3. Create user: `artisan_staging` with read/write access
 4. Whitelist Render IPs (or 0.0.0.0/0 for staging)
-5. Get connection string: `mongodb+srv://chapchap_staging:<password>@cluster0.xxxxx.mongodb.net/chapchap_staging`
+5. Get connection string: `mongodb+srv://artisan_staging:<password>@cluster0.xxxxx.mongodb.net/artisan_staging`
 
 ### Production
 1. Upgrade to M10 dedicated cluster
-2. Database name: `chapchap_prod`
+2. Database name: `artisan_prod`
 3. Enable backup (daily snapshots)
 4. IP whitelist: Render static IPs only
 5. Enable audit logging
@@ -60,12 +60,12 @@ If service is disputed, admin resolves and can trigger refund or partial release
 |----------|----------|---------|-------|
 | `ENVIRONMENT` | Yes | `staging` or `production` | Controls CORS, secrets validation |
 | `MONGO_URL` | Yes | `mongodb+srv://...` | Atlas connection string |
-| `DB_NAME` | Yes | `chapchap_staging` | Database name |
+| `DB_NAME` | Yes | `artisan_staging` | Database name |
 | `JWT_SECRET` | Yes | (32+ char random string) | `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `JWT_ALGORITHM` | No | `HS256` | Default: HS256 |
 | `HOST` | No | `0.0.0.0` | Default: 0.0.0.0 |
 | `PORT` | No | `10000` | Render sets this automatically |
-| `ALLOWED_ORIGINS` | Yes | `https://servicio.ci,https://staging.servicio.ci` | Comma-separated, NO wildcard in prod |
+| `ALLOWED_ORIGINS` | Yes | `https://artisan.ci,https://staging.artisan.ci` | Comma-separated, NO wildcard in prod |
 | `PAYMENT_PROVIDER` | Yes | `mock` (staging) or `paiementpro` (prod) | Provider to use |
 | `PAIEMENTPRO_MERCHANT_ID` | Prod only | `PP-F6917` | PaiementPro merchant ID |
 | `PAIEMENTPRO_WEBHOOK_SECRET` | Prod only | (from PaiementPro dashboard) | For hashcode verification |
@@ -81,13 +81,13 @@ python -c "import secrets; print(secrets.token_hex(32))"
 ### Verify Deployment
 ```powershell
 # Health check
-Invoke-RestMethod -Uri "https://servicio-api.onrender.com/api/health"
+Invoke-RestMethod -Uri "https://artisan-api.onrender.com/api/health"
 
 # DB connectivity
-Invoke-RestMethod -Uri "https://servicio-api.onrender.com/api/health/db"
+Invoke-RestMethod -Uri "https://artisan-api.onrender.com/api/health/db"
 
 # Version info
-Invoke-RestMethod -Uri "https://servicio-api.onrender.com/api/health/version"
+Invoke-RestMethod -Uri "https://artisan-api.onrender.com/api/health/version"
 ```
 
 ---
@@ -113,12 +113,12 @@ Add to `frontend/eas.json`:
     "staging": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://servicio-api.onrender.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://artisan-api.onrender.com"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api.servicio.ci"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.artisan.ci"
       }
     }
   },
@@ -159,7 +159,7 @@ npx eas-cli update --branch staging --message "Bug fix v1.0.1"
 ### Setup
 1. Register merchant account at https://www.paiementpro.net
 2. Get merchant credentials from PaiementPro dashboard
-3. Configure webhook URL: `https://api.servicio.ci/api/payments/webhook`
+3. Configure webhook URL: `https://api.artisan.ci/api/payments/webhook`
 4. Set `PAIEMENTPRO_MERCHANT_ID` and `PAIEMENTPRO_WEBHOOK_SECRET` in Render env vars
 5. Set `PAYMENT_PROVIDER=paiementpro` in Render env vars
 
@@ -193,9 +193,9 @@ npx eas-cli update --branch staging --message "Bug fix v1.0.1"
 
 ## 6. DNS & Custom Domain (Production)
 
-1. Register `servicio.ci` domain
-2. Render: Add custom domain `api.servicio.ci` -> auto-SSL
-3. Frontend: Configure deep links with `servicio://` scheme (already in app.json)
+1. Register `artisan.ci` domain
+2. Render: Add custom domain `api.artisan.ci` -> auto-SSL
+3. Frontend: Configure deep links with `artisan://` scheme (already in app.json)
 
 ---
 
@@ -230,3 +230,5 @@ npx eas-cli update --branch staging --message "Bug fix v1.0.1"
 - [ ] Monitoring configured (Render metrics + Atlas alerts)
 - [ ] Legacy bookings migration applied (`--apply`)
 - [ ] First admin user created with `super_admin` role
+
+

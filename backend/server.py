@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Query
+﻿from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import socketio
@@ -37,7 +37,7 @@ ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",
 def _validate_secrets():
     """Fail fast if critical secrets are missing or default in production."""
     jwt_secret = os.getenv("JWT_SECRET", "")
-    bad_defaults = {"", "change-me", "chapchap-2026-secret-key-change-in-production", "your-super-secret-jwt-key"}
+    bad_defaults = {"", "change-me", "artisan-2026-secret-key-change-in-production", "your-super-secret-jwt-key"}
     if ENVIRONMENT == "production":
         if jwt_secret in bad_defaults:
             raise RuntimeError("FATAL: JWT_SECRET must be set to a secure random value in production")
@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
     await close_mongo_connection()
     print("[OK] Application shutdown complete")
 
-app = FastAPI(title="Servicio API", lifespan=lifespan)
+app = FastAPI(title="ARTISAN API", lifespan=lifespan)
 
 # Middleware stack (order matters: first added = outermost)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
@@ -675,3 +675,4 @@ if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8001"))
     uvicorn.run(socket_app, host=host, port=port)
+

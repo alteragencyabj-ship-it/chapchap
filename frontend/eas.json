@@ -1,4 +1,4 @@
-{
+﻿{
   "cli": {
     "version": ">= 12.0.0"
   },
@@ -10,13 +10,13 @@
     "staging": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://servicio-api.onrender.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://artisan-api.onrender.com"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api.servicio.ci"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.artisan.ci"
       }
     }
   },

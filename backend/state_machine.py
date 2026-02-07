@@ -1,5 +1,5 @@
-"""
-Service Request State Machine for ChapChap
+﻿"""
+Service Request State Machine for ARTISAN
 ============================================
 Manages transitions: PUBLISHED -> ACCEPTED -> IN_PROGRESS -> COMPLETED -> CONFIRMED
 Also: REFUSED, CANCELLED, DISPUTED, RESOLVED
@@ -165,3 +165,4 @@ async def transition(
     updated = await db_module.db.service_requests.find_one({"_id": ObjectId(request_id)})
     updated["_id"] = str(updated["_id"])
     return updated
+

@@ -1,4 +1,4 @@
-#====================================================================================================
+﻿#====================================================================================================
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
 
@@ -103,7 +103,7 @@
 #====================================================================================================
 
 user_problem_statement: |
-  Redesign de l'interface ChapChap :
+  Redesign de l'interface ARTISAN :
   1. Écran de sélection de services : Transformer en design "bulles" de tailles variées (inspiré Glovo)
   2. Écran d'accueil : Rendre les slogans moins spacieux et plus petits, avec icône moderne
   3. Ajouter de la profondeur à tous les fonds (ombres, elevation)
@@ -142,7 +142,7 @@ frontend:
         comment: |
           Refonte complète de l'écran d'accueil :
           - Nouveau header compact avec icône flash moderne dans logoContainer
-          - Slogan "ChapChap, c'est réglé." moins spacieux (fontSize: 12)
+          - Slogan "ARTISAN, c'est réglé." moins spacieux (fontSize: 12)
           - Textes greeting et userName plus petits (13px et 18px)
           - Background #F8F9FA pour contraste
           - Cartes de services avec profondeur (elevation: 5, shadowOpacity: 0.12)
@@ -204,3 +204,4 @@ agent_communication:
       - Confirmer que le header est plus compact
       - Valider la profondeur visuelle (ombres)
       - Tester sur mobile dimensions (390x844)
+

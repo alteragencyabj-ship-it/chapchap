@@ -1,7 +1,7 @@
-services:
+﻿services:
   - type: web
     runtime: python
-    name: servicio-api
+    name: artisan-api
     repo: https://github.com/alteragencyabj-ship-it/chapchap
     branch: master
     rootDir: backend
@@ -13,7 +13,7 @@ services:
       - key: MONGO_URL
         sync: false
       - key: DB_NAME
-        value: chapchap_staging
+        value: artisan_staging
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_ALGORITHM
@@ -34,3 +34,4 @@ services:
         value: "3.11.0"
     healthCheckPath: /api/health
     autoDeploy: true
+

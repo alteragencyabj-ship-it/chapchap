@@ -1,16 +1,16 @@
-{
+﻿{
   "expo": {
-    "name": "Servicio",
-    "slug": "servicio",
+    "name": "ARTISAN",
+    "slug": "artisan",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "servicio",
+    "scheme": "artisan",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.servicio.app",
+      "bundleIdentifier": "com.artisan.app",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Nous utilisons votre position pour trouver des artisans près de vous.",
         "NSCameraUsageDescription": "Nous avons besoin d'accéder à votre caméra pour prendre des photos de vos demandes.",
@@ -25,7 +25,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#FF5500"
       },
-      "package": "com.servicio.app",
+      "package": "com.artisan.app",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",

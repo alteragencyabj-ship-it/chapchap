@@ -1,4 +1,4 @@
-"""
+﻿"""
 Payment Service -- orchestrates escrow flow.
 
 Flow:
@@ -110,7 +110,7 @@ class PaymentService:
         adapter_result = await self.adapter.initiate_payment(
             amount=amount,
             currency="XOF",
-            description=f"Servicio mission {request_id}",
+            description=f"ARTISAN mission {request_id}",
             idempotency_key=idempotency_key,
             metadata={"channel": payment_channel_value},
         )
@@ -529,3 +529,4 @@ class PaymentService:
                 "created_at": self._now_utc(),
             }
         )
+

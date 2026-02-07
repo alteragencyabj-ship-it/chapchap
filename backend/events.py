@@ -1,5 +1,5 @@
-"""
-Event Bus -- In-process async event system for ChapChap
+﻿"""
+Event Bus -- In-process async event system for ARTISAN
 ========================================================
 Decouples business logic: state machine emits events,
 handlers react (notifications, conversations, credits, etc.)
@@ -64,3 +64,4 @@ def clear_handlers() -> None:
 def list_events() -> Dict[str, List[str]]:
     """Return a summary of registered events and handler names."""
     return {event: [h.__name__ for h in hs] for event, hs in _handlers.items()}
+

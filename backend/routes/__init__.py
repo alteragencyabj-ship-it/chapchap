@@ -1,5 +1,5 @@
-"""
-ChapChap Route Modules
+﻿"""
+ARTISAN Route Modules
 ======================
 All API route modules are registered here and mounted in server.py.
 """
@@ -31,3 +31,4 @@ all_routers = [
     admin_users_router,
     admin_notifications_router,
 ]
+

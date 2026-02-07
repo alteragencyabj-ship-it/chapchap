@@ -1,8 +1,8 @@
-"""
+﻿"""
 Smoke test: verify push token registration in MongoDB.
 
 Usage (PowerShell):
-  cd C:\\klawd-data\\projects\\chapchap\\CHAPCHAP-main
+  cd C:\\klawd-data\\projects\\servicio-app
   .\\.venv\\Scripts\\python.exe backend\\scripts\\smoke_push_token.py
 
 Checks:
@@ -67,3 +67,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

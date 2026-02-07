@@ -1,4 +1,4 @@
-"""
+﻿"""
 Payment provider adapters.
 
 Each adapter implements the same interface so the service layer
@@ -78,7 +78,7 @@ class MockPaymentAdapter(PaymentAdapter):
         ref = f"mock_{uuid.uuid4().hex[:12]}"
         return {
             "provider_ref": ref,
-            "checkout_url": f"https://mock-pay.servicio.local/checkout/{ref}",
+            "checkout_url": f"https://mock-pay.artisan.local/checkout/{ref}",
             "status": "initiated",
         }
 
@@ -342,3 +342,4 @@ def get_payment_adapter() -> PaymentAdapter:
         logger.info("PAYMENT_PROVIDER=wave is deprecated, use paiementpro instead")
         return PaiementProAdapter()
     return MockPaymentAdapter()
+

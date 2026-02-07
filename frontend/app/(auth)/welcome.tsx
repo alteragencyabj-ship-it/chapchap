@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   View,
   Text,
@@ -30,7 +30,7 @@ export default function Welcome() {
           <View style={styles.iconContainer}>
             <Ionicons name="cube-outline" size={64} color={COLORS.primary} />
           </View>
-          <Text style={styles.title}>Servicio</Text>
+          <Text style={styles.title}>ARTISAN</Text>
           <Text style={styles.subtitle}>
             L’excellence à la demande.{'\n'}Des experts qualifiés, chez vous.
           </Text>

@@ -1,5 +1,5 @@
-"""
-RBAC Permission System for ChapChap Admin
+﻿"""
+RBAC Permission System for ARTISAN Admin
 ==========================================
 Roles: super_admin, staff, finance, support
 """
@@ -103,3 +103,4 @@ def require_permission(permission: str):
         return admin
 
     return _check
+

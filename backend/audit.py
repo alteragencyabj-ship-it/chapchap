@@ -1,5 +1,5 @@
-"""
-Audit Log Helper for ChapChap Admin
+﻿"""
+Audit Log Helper for ARTISAN Admin
 =====================================
 Logs admin actions to the audit_log collection.
 """
@@ -48,3 +48,4 @@ async def log_action(
         await db_module.db.audit_log.insert_one(entry)
     except Exception:
         logger.exception("Failed to write audit log entry")
+

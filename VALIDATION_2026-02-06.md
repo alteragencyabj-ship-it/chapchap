@@ -1,12 +1,12 @@
-# Validation ChapChap -- 2026-02-06 (v2 -- staging-ready)
+﻿# Validation ARTISAN -- 2026-02-06 (v2 -- staging-ready)
 
 ## Contexte
 Validation runtime et lint suite a l'implementation des phases 1-5 + hardening staging/prod.
 
-## Backend (C:/klawd-data/projects/chapchap/CHAPCHAP-main/backend/)
+## Backend (C:/klawd-data/projects/servicio-app/backend/)
 
 ### Installation
-- Venv creee: `C:/klawd-data/projects/chapchap/CHAPCHAP-main/.venv/`
+- Venv creee: `C:/klawd-data/projects/servicio-app/.venv/`
 - Deps installees depuis `backend/requirements.txt` (1 package non-PyPI commente: `emergentintegrations==0.1.0`).
 
 ### Fix critique (startup)
@@ -38,7 +38,7 @@ Validation runtime et lint suite a l'implementation des phases 1-5 + hardening s
 - [x] `GET /api/health/version` -- git SHA `dfdbcab`, environment, payment provider
 
 ### Payments MVP (NEW)
-- [x] Adapter pattern: `MockPaymentAdapter` (dev) + `WavePaymentAdapter` (prod)
+- [x] Adapter pattern: `MockPaymentAdapter` (dev) + `PaiementProAdapter` (prod)
 - [x] Escrow at acceptance: client pays when artisan accepts
 - [x] Release after confirmation: commission deducted per artisan credit tier
 - [x] Idempotency keys (unique index, blocks double charges)
@@ -57,7 +57,7 @@ Validation runtime et lint suite a l'implementation des phases 1-5 + hardening s
 - `backend/auth.py`: lit maintenant `JWT_SECRET` (et garde compat `JWT_SECRET_KEY`).
 - `backend/server.py`: `uvicorn.run()` utilise `HOST` / `PORT` depuis `.env` (fallback 0.0.0.0:8001).
 
-## Frontend (C:/klawd-data/projects/chapchap/CHAPCHAP-main/frontend/)
+## Frontend (C:/klawd-data/projects/servicio-app/frontend/)
 
 ### Lint
 ```
@@ -82,7 +82,7 @@ Validation runtime et lint suite a l'implementation des phases 1-5 + hardening s
 
 ```powershell
 # Backend
-cd C:\klawd-data\projects\chapchap\CHAPCHAP-main
+cd C:\klawd-data\projects\servicio-app
 .\.venv\Scripts\python.exe backend\server.py
 
 # Tests
@@ -100,7 +100,8 @@ cd frontend && npm start && npm run lint
 
 ## Blockers restants
 1. GitHub billing (bloque CI)
-2. Wave merchant account (pas encore cree)
+2. PaiementPro merchant account (pas encore cree)
 3. FCM/APNs credentials (besoin EAS + Apple/Google dev)
 4. MongoDB Atlas (cluster a creer)
 5. Render service (render.yaml pret, 1-click)
+

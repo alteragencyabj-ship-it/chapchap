@@ -1,5 +1,5 @@
-"""
-Custom middleware for ChapChap backend.
+﻿"""
+Custom middleware for ARTISAN backend.
 
 - Correlation ID: attaches a unique ID to every request for tracing.
 - Rate limiter: simple in-memory per-IP limiter (no external deps).
@@ -80,3 +80,4 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         self._hits[ip].append(now)
         return await call_next(request)
+

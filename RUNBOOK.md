@@ -1,4 +1,4 @@
-# ChapChap -- Operations Runbook
+﻿# ARTISAN -- Operations Runbook
 
 ## Quick Reference
 
@@ -34,12 +34,12 @@
 ### Payment Webhook Not Processing
 
 1. Check `/api/health` is up
-2. Verify `WAVE_WEBHOOK_SECRET` matches Wave dashboard
+2. Verify `PAIEMENTPRO_WEBHOOK_SECRET` matches PaiementPro dashboard
 3. Check payment_events collection for raw webhook data:
    ```javascript
    db.payment_events.find({event_type: "webhook_received"}).sort({created_at: -1}).limit(5)
    ```
-4. Verify webhook URL in Wave dashboard matches production URL
+4. Verify webhook URL in PaiementPro dashboard matches production URL
 5. Check Render logs for signature verification errors
 
 ### Push Notifications Not Delivered
@@ -152,7 +152,7 @@ db.users.aggregate([{ $indexStats: {} }])
 
 **Dry run** (no writes):
 ```powershell
-cd C:\klawd-data\projects\chapchap\CHAPCHAP-main
+cd C:\klawd-data\projects\servicio-app
 .\.venv\Scripts\python.exe backend\scripts\migrate_bookings_to_service_requests.py --dry-run
 ```
 
@@ -233,3 +233,4 @@ Recommended: UptimeRobot (free) or Better Uptime
 - Monitor: `GET /api/health` every 5 minutes
 - Monitor: `GET /api/health/db` every 15 minutes
 - Alert via: email + Telegram
+

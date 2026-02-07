@@ -1,4 +1,4 @@
-import Constants from 'expo-constants';
+﻿import Constants from 'expo-constants';
 
 // Use your local IP so your phone can reach the backend.
 // You can override this at build time via EXPO_PUBLIC_API_BASE_URL.
@@ -12,13 +12,13 @@ export const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ||
   'YOUR_GOOGLE_MAPS_KEY_HERE';
 
 export const SERVICE_CATEGORIES = [
-  { id: 'menage', name: 'Ménage', icon: 'sparkles', color: '#FF5500', layout: 'large' },           // Orange Servicio
+  { id: 'menage', name: 'Ménage', icon: 'sparkles', color: '#FF5500', layout: 'large' },           // Orange ARTISAN
   { id: 'plomberie', name: 'Plomberie', icon: 'water', color: '#0066FF', layout: 'medium' },        // Bleu Confiance
-  { id: 'electricite', name: 'Électricité', icon: 'flash', color: '#FF5500', layout: 'medium' },    // Orange Servicio
+  { id: 'electricite', name: 'Électricité', icon: 'flash', color: '#FF5500', layout: 'medium' },    // Orange ARTISAN
   { id: 'bricolage', name: 'Bricolage', icon: 'hammer', color: '#0066FF', layout: 'medium' },       // Bleu Confiance
-  { id: 'mecanique', name: 'Mécanique', icon: 'car', color: '#FF5500', layout: 'large' },          // Orange Servicio
+  { id: 'mecanique', name: 'Mécanique', icon: 'car', color: '#FF5500', layout: 'large' },          // Orange ARTISAN
   { id: 'taches_quotidiennes', name: 'Tâches Quotidiennes', icon: 'list', color: '#0066FF', layout: 'medium' }, // Bleu Confiance
-  { id: 'climatisation', name: 'Climatisation', icon: 'snow', color: '#FF5500', layout: 'medium' }, // Orange Servicio
+  { id: 'climatisation', name: 'Climatisation', icon: 'snow', color: '#FF5500', layout: 'medium' }, // Orange ARTISAN
 ];
 
 export const SERVICES_DATA = {
@@ -102,7 +102,7 @@ export const SERVICES_DATA = {
 export const SERVICE_TYPES = SERVICE_CATEGORIES.map(c => c.id);
 
 export const COLORS = {
-  primary: '#FF5500',        // Orange Servicio - Vibrant, Premium
+  primary: '#FF5500',        // Orange ARTISAN - Vibrant, Premium
   secondary: '#1A1A1A',      // Black - Contrast, Modern
   blue: '#0066FF',           // Vivid Blue - Trust
   danger: '#FF3B30',         // iOS Red
@@ -117,3 +117,4 @@ export const COLORS = {
   surface: '#FFFFFF',        // Card Background
   shadow: '#000000',         // Shadow Color
 };
+

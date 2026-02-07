@@ -1,5 +1,5 @@
-"""
-Servicio Payments Module
+﻿"""
+ARTISAN Payments Module
 ========================
 Escrow-based payment system with pluggable provider adapters.
 
@@ -15,3 +15,4 @@ __all__ = [
     "MockPaymentAdapter",
     "PaiementProAdapter",
 ]
+
