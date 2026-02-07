@@ -19,8 +19,8 @@ export default function Index() {
   return (
     <View style={styles.container}>
       <ActivityIndicator size="large" color={COLORS.primary} />
-      <Text style={styles.text}>ChapChap</Text>
-      <Text style={styles.slogan}>ChapChap, c'est réglé.</Text>
+      <Text style={styles.text}>Servicio</Text>
+      <Text style={styles.slogan}>L'excellence à la demande.</Text>
     </View>
   );
 }

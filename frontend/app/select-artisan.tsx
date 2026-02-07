@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StatusBar,
+  Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,14 +27,16 @@ interface Artisan {
   city?: string;
   statut?: string;
   distance?: number;
+  is_verified?: boolean;
 }
 
 export default function SelectArtisan() {
   const router = useRouter();
   const { serviceId, serviceName, servicePrice, categoryId } = useLocalSearchParams();
-  
+
   const [artisans, setArtisans] = useState<Artisan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'recommended' | 'nearest' | 'fastest'>('recommended');
 
   useEffect(() => {
     fetchArtisans();
@@ -41,35 +44,16 @@ export default function SelectArtisan() {
 
   const fetchArtisans = async () => {
     try {
-      // Fetch artisans filtered by service category
       const response = await api.get('/artisans', {
         params: {
           specialty: categoryId,
           verified_only: false,
         }
       });
-      
-      // Sort artisans: disponible > rating > missions > response time
-      const sorted = response.data.sort((a: Artisan, b: Artisan) => {
-        // Priority 1: Disponible first
-        if (a.statut === 'disponible' && b.statut !== 'disponible') return -1;
-        if (a.statut !== 'disponible' && b.statut === 'disponible') return 1;
-        
-        // Priority 2: Rating
-        if (b.average_rating !== a.average_rating) {
-          return b.average_rating - a.average_rating;
-        }
-        
-        // Priority 3: Number of missions
-        if (b.total_missions !== a.total_missions) {
-          return b.total_missions - a.total_missions;
-        }
-        
-        // Priority 4: Response rate
-        return (b.taux_reponse || 0) - (a.taux_reponse || 0);
-      });
-      
-      setArtisans(sorted);
+
+      const data = response.data || [];
+      // Basic sort initially
+      setArtisans(data);
     } catch (error) {
       console.error('Failed to fetch artisans:', error);
     } finally {
@@ -77,27 +61,23 @@ export default function SelectArtisan() {
     }
   };
 
-  const getStatusColor = (statut?: string) => {
-    switch (statut) {
-      case 'disponible': return COLORS.secondary;
-      case 'occupe': return COLORS.warning;
-      case 'hors-ligne': return COLORS.textLight;
-      default: return COLORS.textLight;
+  const getSortedArtisans = () => {
+    let sorted = [...artisans];
+    if (filter === 'nearest') {
+      // Mock sort as distance might be missing
+      sorted.sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    } else if (filter === 'fastest') {
+      sorted.sort((a, b) => (b.taux_reponse || 0) - (a.taux_reponse || 0));
+    } else {
+      // Recommended: Rating + Missions
+      sorted.sort((a, b) => b.average_rating - a.average_rating || b.total_missions - a.total_missions);
     }
-  };
-
-  const getStatusText = (statut?: string) => {
-    switch (statut) {
-      case 'disponible': return 'Disponible';
-      case 'occupe': return 'Occupé';
-      case 'hors-ligne': return 'Hors-ligne';
-      default: return 'Indisponible';
-    }
+    return sorted;
   };
 
   const renderArtisan = ({ item }: { item: Artisan }) => (
     <TouchableOpacity
-      style={styles.artisanCard}
+      style={styles.card}
       onPress={() => router.push({
         pathname: '/checkout',
         params: {
@@ -109,80 +89,108 @@ export default function SelectArtisan() {
           categoryId,
         }
       })}
-      activeOpacity={0.7}
+      activeOpacity={0.9}
     >
-      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.statut) + '20' }]}>
-        <View style={[styles.statusDot, { backgroundColor: getStatusColor(item.statut) }]} />
+      <View style={styles.cardHeader}>
+        <View style={styles.avatarContainer}>
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarInitial}>{item.name.charAt(0)}</Text>
+          </View>
+          {item.is_verified && (
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark-circle" size={16} color={COLORS.blue} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.cardInfo}>
+          <View style={styles.nameRow}>
+            <Text style={styles.name}>{item.name}</Text>
+            <View style={[styles.statusPill, item.statut === 'disponible' ? styles.statusAvailable : styles.statusBusy]}>
+              <View style={[styles.statusDot, { backgroundColor: item.statut === 'disponible' ? COLORS.success : COLORS.textLight }]} />
+              <Text style={styles.statusText}>{item.statut === 'disponible' ? 'Dispo' : 'Occupé'}</Text>
+            </View>
+          </View>
+
+          <Text style={styles.specialties}>{serviceName} • {item.quartier || 'Abidjan'}</Text>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Ionicons name="star" size={14} color={COLORS.warning} />
+              <Text style={styles.statValue}>{item.average_rating?.toFixed(1)}</Text>
+              <Text style={styles.statLabel}>({item.total_missions})</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Ionicons name="time-outline" size={14} color={COLORS.textLight} />
+              <Text style={styles.statValue}>15 min</Text>
+              <Text style={styles.statLabel}>délai</Text>
+            </View>
+          </View>
+        </View>
       </View>
-      
-      <View style={styles.artisanAvatar}>
-        <Ionicons name="person" size={28} color={COLORS.primary} />
+
+      <View style={styles.cardFooter}>
+        <View style={styles.priceTag}>
+          <Text style={styles.priceLabel}>A partir de</Text>
+          <Text style={styles.priceAmount}>{servicePrice} F</Text>
+        </View>
+        <View style={styles.selectButton}>
+          <Text style={styles.selectButtonText}>Choisir</Text>
+          <Ionicons name="arrow-forward" size={16} color={COLORS.white} />
+        </View>
       </View>
-      
-      <Text style={styles.artisanName} numberOfLines={1}>{item.name}</Text>
-      
-      <View style={styles.ratingContainer}>
-        <Ionicons name="star" size={14} color={COLORS.warning} />
-        <Text style={styles.ratingText}>
-          {item.average_rating?.toFixed(1) || '0.0'}
-        </Text>
-      </View>
-      
-      <Text style={styles.missionsText} numberOfLines={1}>
-        {item.total_missions || 0} mission{(item.total_missions || 0) > 1 ? 's' : ''}
-      </Text>
-      
-      {item.quartier && (
-        <Text style={styles.locationText} numberOfLines={1}>
-          {item.quartier}
-        </Text>
-      )}
     </TouchableOpacity>
   );
 
-  if (loading) {
-    return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
-      
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.light} />
+
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.dark} />
         </TouchableOpacity>
-        <View style={{ flex: 1, marginLeft: 16 }}>
-          <Text style={styles.headerTitle}>Artisans disponibles</Text>
-          <Text style={styles.headerSubtitle}>{serviceName}</Text>
-        </View>
+        <Text style={styles.headerTitle}>Choisissez votre expert</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <View style={styles.priceContainer}>
-        <Text style={styles.priceLabel}>Prix du service :</Text>
-        <Text style={styles.priceValue}>{servicePrice} FCFA</Text>
+      {/* Filters */}
+      <View style={styles.filterContainer}>
+        {['recommended', 'nearest', 'fastest'].map((f) => (
+          <TouchableOpacity
+            key={f}
+            style={[styles.filterChip, filter === f && styles.filterChipActive]}
+            onPress={() => setFilter(f as any)}
+          >
+            <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
+              {f === 'recommended' ? 'Recommandés' : f === 'nearest' ? 'Plus proches' : 'Plus rapides'}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {artisans.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="people-outline" size={80} color={COLORS.textLight} />
-          <Text style={styles.emptyText}>Aucun artisan disponible</Text>
-          <Text style={styles.emptySubtext}>
-            Aucun artisan qualifié n'est disponible pour ce service actuellement
-          </Text>
+      {loading ? (
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       ) : (
         <FlatList
-          data={artisans}
+          data={getSortedArtisans()}
           renderItem={renderArtisan}
           keyExtractor={(item) => item._id}
-          numColumns={3}
           contentContainerStyle={styles.listContent}
-          columnWrapperStyle={styles.columnWrapper}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIcon}>
+                <Ionicons name="search-outline" size={40} color={COLORS.textLight} />
+              </View>
+              <Text style={styles.emptyTitle}>Aucun artisan trouvé</Text>
+              <Text style={styles.emptyText}>Essayez une autre catégorie ou revenez plus tard.</Text>
+            </View>
+          }
         />
       )}
     </SafeAreaView>
@@ -192,166 +200,235 @@ export default function SelectArtisan() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: COLORS.light,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 20,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.dark,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginBottom: 20,
+    gap: 12,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.dark,
+    borderColor: COLORS.dark,
+  },
+  filterText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textLight,
+  },
+  filterTextActive: {
+    color: COLORS.white,
   },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  card: {
     backgroundColor: COLORS.white,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.dark,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: COLORS.textLight,
-    marginTop: 2,
-  },
-  priceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    marginBottom: 16,
     padding: 16,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     elevation: 3,
   },
-  priceLabel: {
-    fontSize: 14,
-    color: COLORS.dark,
+  cardHeader: {
+    flexDirection: 'row',
+    marginBottom: 16,
   },
-  priceValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.secondary,
+  avatarContainer: {
+    marginRight: 16,
   },
-  listContent: {
-    padding: 12,
-  },
-  columnWrapper: {
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  artisanCard: {
-    width: '31.5%',
-    aspectRatio: 0.85,
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    padding: 12,
+  avatarPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.light,
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 5,
   },
-  statusBadge: {
+  avatarInitial: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+  },
+  verifiedBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: COLORS.white,
+    bottom: -4,
+    right: -4,
+    backgroundColor: COLORS.white,
+    borderRadius: 10,
+  },
+  cardInfo: {
+    flex: 1,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  name: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.dark,
+    flex: 1,
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusAvailable: {
+    backgroundColor: COLORS.success + '15',
+  },
+  statusBusy: {
+    backgroundColor: COLORS.textLight + '15',
   },
   statusDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
+    marginRight: 6,
   },
-  artisanAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: `${COLORS.primary}15`,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-    shadowColor: COLORS.primary,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  artisanName: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.dark,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-  },
-  ratingText: {
+  statusText: {
     fontSize: 11,
     fontWeight: '600',
     color: COLORS.dark,
   },
-  missionsText: {
-    fontSize: 10,
+  specialties: {
+    fontSize: 13,
     color: COLORS.textLight,
-    marginTop: 2,
+    marginBottom: 8,
   },
-  locationText: {
-    fontSize: 10,
-    color: COLORS.textLight,
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  statsRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: 40,
   },
-  emptyText: {
-    fontSize: 20,
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.dark,
+  },
+  statLabel: {
+    fontSize: 13,
+    color: COLORS.textLight,
+    marginLeft: 2,
+  },
+  statDivider: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 8,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  priceTag: {
+
+  },
+  priceLabel: {
+    fontSize: 11,
+    color: COLORS.textLight,
+    marginBottom: 2,
+  },
+  priceAmount: {
+    fontSize: 16,
     fontWeight: 'bold',
     color: COLORS.dark,
-    marginTop: 16,
   },
-  emptySubtext: {
+  selectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.dark, // Premium Black Button
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    gap: 8,
+  },
+  selectButtonText: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    marginTop: 60,
+  },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.light,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.dark,
+    marginBottom: 8,
+  },
+  emptyText: {
     fontSize: 14,
     color: COLORS.textLight,
     textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 20,
+    maxWidth: 240,
   },
 });

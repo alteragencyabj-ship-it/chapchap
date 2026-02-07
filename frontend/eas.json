@@ -10,13 +10,13 @@
     "staging": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://chapchap-api-staging.onrender.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://servicio-api.onrender.com"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api.chapchap.ci"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.servicio.ci"
       }
     }
   },

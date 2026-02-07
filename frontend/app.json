@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "ChapChap",
-    "slug": "chapchap",
+    "name": "Servicio",
+    "slug": "servicio",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "chapchap",
+    "scheme": "servicio",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.chapchap.app",
+      "bundleIdentifier": "com.servicio.app",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Nous utilisons votre position pour trouver des artisans près de vous.",
         "NSCameraUsageDescription": "Nous avons besoin d'accéder à votre caméra pour prendre des photos de vos demandes.",
@@ -23,9 +23,9 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#2563eb"
+        "backgroundColor": "#FF5500"
       },
-      "package": "com.chapchap.app",
+      "package": "com.servicio.app",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",

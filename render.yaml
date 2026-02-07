@@ -1,7 +1,7 @@
 services:
   - type: web
     runtime: python
-    name: chapchap-api-staging
+    name: servicio-api
     repo: https://github.com/alteragencyabj-ship-it/chapchap
     branch: master
     rootDir: backend

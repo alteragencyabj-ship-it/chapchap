@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,103 +6,232 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  TextInput,
+  Dimensions,
   StatusBar,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/store/authStore';
 import { SERVICE_CATEGORIES, COLORS } from '../../src/config/constants';
 
+const { width } = Dimensions.get('window');
+const PADDING = 24;
+const GAP = 16;
+const CARD_WIDTH = (width - (PADDING * 2) - GAP) / 2;
+
+// Animated Card Component for Staggered Effect
+const AnimatedCard = ({ index, children }: { index: number, children: React.ReactNode }) => {
+  const slideAnim = useRef(new Animated.Value(50)).current; // Start 50px down
+  const fadeAnim = useRef(new Animated.Value(0)).current;   // Start transparent
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        delay: index * 100, // Stagger by 100ms
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        delay: index * 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={{
+        opacity: fadeAnim,
+        transform: [{ translateY: slideAnim }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+};
+
+// Pulsing Icon Component
+const PulsingIcon = () => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1.2,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <Ionicons name="flash" size={40} color={COLORS.white} />
+    </Animated.View>
+  );
+};
+
 export default function Home() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Bonjour,';
+    if (hour < 18) return 'Bon après-midi,';
+    return 'Bonsoir,';
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
-      
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.light} />
+
+      {/* Header Section */}
       <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <View style={styles.logoContainer}>
-            <Ionicons name="flash" size={28} color={COLORS.primary} />
-          </View>
-          <View style={styles.greetingContainer}>
-            <Text style={styles.greeting}>Bonjour,</Text>
-            <Text style={styles.userName}>{user?.name || 'Utilisateur'}</Text>
-          </View>
+        <View>
+          <Text style={styles.greetingTitle}>{getGreeting()}</Text>
+          <Text style={styles.userName}>{user?.name?.split(' ')[0] || 'Client'}</Text>
         </View>
-        <View style={styles.sloganContainer}>
-          <Text style={styles.brandName}>ChapChap,{' '}</Text>
-          <Text style={styles.slogan}>c'est réglé.</Text>
-        </View>
+        <TouchableOpacity
+          style={styles.profileButton}
+          onPress={() => router.push('/(tabs)/profile')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarText}>
+              {user?.name ? user.name.charAt(0).toUpperCase() : 'C'}
+            </Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Search Section */}
+        <View style={styles.searchContainer}>
+          <View style={styles.searchBar}>
+            <Ionicons name="search" size={22} color={COLORS.textLight} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="De quoi avez-vous besoin ?"
+              placeholderTextColor={COLORS.textLight}
+            />
+            <View style={styles.filterButton}>
+              <Ionicons name="options-outline" size={20} color={COLORS.dark} />
+            </View>
+          </View>
+        </View>
+
+        {/* Promo Banner with Pulse */}
+        <AnimatedCard index={0}>
+          <View style={styles.promoBanner}>
+            <View style={styles.promoContent}>
+              <Text style={styles.promoTitle}>Service Express</Text>
+              <Text style={styles.promoText}>Un artisan chez vous en -30 min.</Text>
+            </View>
+            <View style={styles.promoIcon}>
+              <PulsingIcon />
+            </View>
+          </View>
+        </AnimatedCard>
+
+        {/* Services Grid - Animated Stagger */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>De quel service avez-vous besoin ?</Text>
-          
-          <View style={styles.servicesGrid}>
-            {SERVICE_CATEGORIES.map((service) => (
-              <TouchableOpacity
-                key={service.id}
-                style={styles.serviceBubble}
-                onPress={() => router.push({
-                  pathname: '/select-service',
-                  params: { 
-                    categoryId: service.id,
-                    categoryName: service.name
-                  }
-                })}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.bubbleIconContainer, { backgroundColor: service.color + '20' }]}>
-                  <Ionicons name={service.icon as any} size={36} color={service.color} />
-                </View>
-                <Text style={styles.bubbleServiceName}>{service.name}</Text>
-              </TouchableOpacity>
+          <Text style={styles.sectionTitle}>Nos Services</Text>
+          <View style={styles.grid}>
+            {SERVICE_CATEGORIES.map((service: any, index: number) => (
+              <AnimatedCard key={service.id} index={index + 1}>
+                <TouchableOpacity
+                  style={styles.card}
+                  onPress={() => router.push({
+                    pathname: '/select-service',
+                    params: {
+                      categoryId: service.id,
+                      categoryName: service.name
+                    }
+                  })}
+                  activeOpacity={0.95} // More solid feel
+                >
+                  <View style={styles.cardContent}>
+                    {/* Watermark Icon */}
+                    <View style={styles.watermarkContainer}>
+                      <Ionicons
+                        name={service.icon}
+                        size={90}
+                        color={service.color}
+                        style={{ opacity: 0.08 }}
+                      />
+                    </View>
+
+                    {/* Foreground Content */}
+                    <View style={styles.cardHeader}>
+                      <View style={[
+                        styles.iconCircle,
+                        { backgroundColor: service.color + '15' }
+                      ]}>
+                        <Ionicons
+                          name={service.icon}
+                          size={26}
+                          color={service.color}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.cardFooter}>
+                      <Text style={styles.cardTitle} numberOfLines={2}>
+                        {service.name}
+                      </Text>
+                      <View style={styles.arrowContainer}>
+                        <Ionicons name="chevron-forward" size={16} color={COLORS.textLight} />
+                      </View>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              </AnimatedCard>
             ))}
           </View>
         </View>
 
+        {/* How it works */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Comment ça marche ?</Text>
-          
-          <View style={styles.stepCard}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>1</Text>
-            </View>
-            <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Choisissez un service</Text>
-              <Text style={styles.stepDescription}>
-                Sélectionnez parmi nos services à prix fixe
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.stepCard}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>2</Text>
-            </View>
-            <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Trouvez votre artisan</Text>
-              <Text style={styles.stepDescription}>
-                Consultez les artisans disponibles près de chez vous
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.stepCard}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>3</Text>
-            </View>
-            <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Discutez et validez</Text>
-              <Text style={styles.stepDescription}>
-                Échangez et planifiez l'intervention
-              </Text>
-            </View>
-          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stepsContainer}>
+            {[1, 2, 3].map((step, index) => (
+              <View key={step} style={styles.stepItem}>
+                <View style={styles.stepCircle}>
+                  <Text style={styles.stepNumber}>{step}</Text>
+                  <View style={styles.stepIconParams}>
+                    <Ionicons
+                      name={index === 0 ? "search" : index === 1 ? "calendar" : "checkmark"}
+                      size={24}
+                      color={COLORS.primary}
+                    />
+                  </View>
+                </View>
+                <Text style={styles.stepText}>
+                  {index === 0 ? "Choisissez" : index === 1 ? "Réservez" : "Profitez"}
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
         </View>
+
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -111,185 +240,253 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: COLORS.light,
   },
   header: {
-    paddingTop: 16,
-    paddingBottom: 12,
-    paddingHorizontal: 20,
-    backgroundColor: COLORS.white,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: PADDING,
+    paddingTop: 20,
+    marginBottom: 24,
+  },
+  greetingTitle: {
+    fontSize: 16,
+    color: COLORS.textLight,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  userName: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: COLORS.dark,
+    letterSpacing: -0.5,
+  },
+  profileButton: {
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 6,
+    elevation: 4,
   },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  logoContainer: {
+  avatarPlaceholder: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: `${COLORS.primary}15`,
+    backgroundColor: COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: COLORS.primary,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 2,
+    borderColor: COLORS.light,
   },
-  greetingContainer: {
-    flex: 1,
-  },
-  greeting: {
-    fontSize: 13,
-    color: COLORS.textLight,
-  },
-  userName: {
+  avatarText: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.dark,
-    marginTop: 2,
-  },
-  sloganContainer: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border + '50',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  brandName: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.dark,
-  },
-  slogan: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '700',
     color: COLORS.primary,
-    fontStyle: 'italic',
   },
   content: {
     flex: 1,
   },
-  section: {
-    padding: 20,
-    paddingTop: 16,
+  scrollContent: {
+    paddingBottom: 100,
   },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: COLORS.dark,
-    marginBottom: 14,
+  searchContainer: {
+    paddingHorizontal: PADDING,
+    marginBottom: 24,
   },
-  servicesGrid: {
+  searchBar: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  serviceBubble: {
-    width: '47%',
-    aspectRatio: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: 1000,
-    padding: 20,
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    height: 60,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
     shadowRadius: 10,
-    elevation: 6,
-  },
-  bubbleIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     elevation: 3,
   },
-  bubbleServiceName: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.dark,
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  stepCard: {
-    flexDirection: 'row',
-    gap: 14,
-    marginBottom: 14,
-    backgroundColor: COLORS.white,
-    padding: 14,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  stepNumber: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: COLORS.primary,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  stepNumberText: {
+  searchInput: {
+    flex: 1,
+    marginLeft: 12,
     fontSize: 16,
+    color: COLORS.text,
+    height: '100%',
+    fontWeight: '500',
+  },
+  filterButton: {
+    padding: 8,
+    borderLeftWidth: 1,
+    borderLeftColor: COLORS.border,
+    paddingLeft: 16,
+  },
+  promoBanner: {
+    marginHorizontal: PADDING,
+    marginBottom: 32,
+    backgroundColor: COLORS.primary,
+    borderRadius: 24,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  promoContent: {
+    flex: 1,
+    marginRight: 16,
+  },
+  promoTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: COLORS.white,
+    marginBottom: 6,
   },
-  stepContent: {
-    flex: 1,
+  promoText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '500',
+  },
+  promoIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  stepTitle: {
+  section: {
+    marginBottom: 32,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.dark,
+    marginBottom: 20,
+    paddingHorizontal: PADDING,
+    letterSpacing: -0.5,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: GAP,
+    paddingHorizontal: PADDING,
+  },
+  card: {
+    width: CARD_WIDTH,
+    height: 170, // Uniform height
+    borderRadius: 24,
+    backgroundColor: COLORS.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 4,
+    marginBottom: 8,
+  },
+  cardContent: {
+    flex: 1,
+    borderRadius: 24,
+    padding: 16,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+  },
+  watermarkContainer: {
+    position: 'absolute',
+    right: -25,
+    bottom: -25,
+    transform: [{ rotate: '-10deg' }],
+  },
+  cardHeader: {
+    alignItems: 'flex-start',
+  },
+  iconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.dark,
+    flex: 1,
+    marginRight: 8,
+    lineHeight: 20,
+  },
+  arrowContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.light,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepsContainer: {
+    paddingHorizontal: PADDING,
+    gap: 24,
+  },
+  stepItem: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  stepCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+  },
+  stepNumber: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.dark,
+    color: COLORS.white,
+    textAlign: 'center',
+    lineHeight: 24,
+    fontSize: 12,
+    fontWeight: 'bold',
+    overflow: 'hidden',
+    zIndex: 10,
+  },
+  stepIconParams: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 2,
+    borderColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.light,
+  },
+  stepText: {
     fontSize: 14,
     fontWeight: '600',
-    color: COLORS.dark,
-    marginBottom: 3,
-  },
-  stepDescription: {
-    fontSize: 12,
     color: COLORS.textLight,
-    lineHeight: 16,
+  },
+  bottomSpacer: {
+    height: 40,
   },
 });

@@ -7,18 +7,18 @@ export const API_BASE_URL =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_API_BASE_URL ||
   'http://192.168.1.69:8001';
 
-export const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY || 
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_MAPS_KEY || 
+export const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ||
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_MAPS_KEY ||
   'YOUR_GOOGLE_MAPS_KEY_HERE';
 
 export const SERVICE_CATEGORIES = [
-  { id: 'menage', name: 'Ménage', icon: 'sparkles', color: '#FF7A00' },           // Orange ChapChap
-  { id: 'plomberie', name: 'Plomberie', icon: 'water', color: '#0052CC' },        // Bleu Confiance
-  { id: 'electricite', name: 'Électricité', icon: 'flash', color: '#FF7A00' },    // Orange ChapChap
-  { id: 'bricolage', name: 'Bricolage', icon: 'hammer', color: '#0052CC' },       // Bleu Confiance
-  { id: 'mecanique', name: 'Mécanique', icon: 'car', color: '#FF7A00' },          // Orange ChapChap
-  { id: 'taches_quotidiennes', name: 'Tâches Quotidiennes', icon: 'list', color: '#0052CC' }, // Bleu Confiance
-  { id: 'climatisation', name: 'Climatisation', icon: 'snow', color: '#FF7A00' }, // Orange ChapChap
+  { id: 'menage', name: 'Ménage', icon: 'sparkles', color: '#FF5500', layout: 'large' },           // Orange Servicio
+  { id: 'plomberie', name: 'Plomberie', icon: 'water', color: '#0066FF', layout: 'medium' },        // Bleu Confiance
+  { id: 'electricite', name: 'Électricité', icon: 'flash', color: '#FF5500', layout: 'medium' },    // Orange Servicio
+  { id: 'bricolage', name: 'Bricolage', icon: 'hammer', color: '#0066FF', layout: 'medium' },       // Bleu Confiance
+  { id: 'mecanique', name: 'Mécanique', icon: 'car', color: '#FF5500', layout: 'large' },          // Orange Servicio
+  { id: 'taches_quotidiennes', name: 'Tâches Quotidiennes', icon: 'list', color: '#0066FF', layout: 'medium' }, // Bleu Confiance
+  { id: 'climatisation', name: 'Climatisation', icon: 'snow', color: '#FF5500', layout: 'medium' }, // Orange Servicio
 ];
 
 export const SERVICES_DATA = {
@@ -102,15 +102,18 @@ export const SERVICES_DATA = {
 export const SERVICE_TYPES = SERVICE_CATEGORIES.map(c => c.id);
 
 export const COLORS = {
-  primary: '#FF7A00',        // Orange ChapChap - énergie, rapidité
-  secondary: '#2ECC71',      // Vert Validé - disponibilité
-  blue: '#0052CC',           // Bleu Confiance - fiabilité, sérieux
-  danger: '#ef4444',
-  warning: '#f59e0b',
-  dark: '#333333',           // Gris foncé - textes
-  light: '#F2F2F2',          // Gris clair - arrière-plans
-  white: '#FFFFFF',          // Blanc - pureté, lisibilité
-  border: '#e5e7eb',
-  text: '#333333',           // Gris foncé
-  textLight: '#6b7280',
+  primary: '#FF5500',        // Orange Servicio - Vibrant, Premium
+  secondary: '#1A1A1A',      // Black - Contrast, Modern
+  blue: '#0066FF',           // Vivid Blue - Trust
+  danger: '#FF3B30',         // iOS Red
+  warning: '#FFCC00',        // Warm Yellow
+  dark: '#121212',           // Ultra Dark Gray
+  light: '#F5F5F7',          // iOS/Apple Light Gray Background
+  white: '#FFFFFF',          // Pure White
+  border: '#E5E5EA',         // Soft Border
+  text: '#1C1C1E',           // Primary Text
+  textLight: '#8E8E93',      // Secondary Text
+  success: '#34C759',        // iOS Green
+  surface: '#FFFFFF',        // Card Background
+  shadow: '#000000',         // Shadow Color
 };

@@ -28,8 +28,8 @@ export default function Demo() {
     setSelectedRole(role);
 
     try {
-      const email = role === 'client' 
-        ? 'demo.client@artisan.app' 
+      const email = role === 'client'
+        ? 'demo.client@artisan.app'
         : 'demo.artisan@artisan.app';
 
       console.log('🔵 Attempting login with email:', email);
@@ -47,7 +47,7 @@ export default function Demo() {
       await setToken(access_token);
       setUser(user);
       await AsyncStorage.setItem('user_data', JSON.stringify(user));
-      
+
       console.log('✅ Redirecting to tabs...');
       // Redirect based on user role
       if (user.role === 'artisan') {
@@ -61,7 +61,7 @@ export default function Demo() {
       console.error('❌ Error code:', error.code);
       console.error('❌ Error response:', error.response);
       console.error('❌ Error config:', error.config);
-      
+
       let errorMessage = 'Erreur de connexion';
       if (error.message) {
         errorMessage += ': ' + error.message;
@@ -69,7 +69,7 @@ export default function Demo() {
       if (error.code) {
         errorMessage += ' (' + error.code + ')';
       }
-      
+
       Alert.alert(
         'Erreur de connexion',
         errorMessage,
@@ -93,7 +93,7 @@ export default function Demo() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
-      
+
       <View style={styles.content}>
         <TouchableOpacity
           style={styles.backButton}
@@ -104,7 +104,7 @@ export default function Demo() {
 
         <View style={styles.header}>
           <Ionicons name="flash" size={60} color={COLORS.white} />
-          <Text style={styles.title}>Découvrez ChapChap</Text>
+          <Text style={styles.title}>Découvrez Servicio</Text>
           <Text style={styles.subtitle}>
             Testez l'app avec un compte démo
           </Text>

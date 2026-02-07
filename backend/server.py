@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI):
     await close_mongo_connection()
     print("[OK] Application shutdown complete")
 
-app = FastAPI(title="Artisan Connect API", lifespan=lifespan)
+app = FastAPI(title="Servicio API", lifespan=lifespan)
 
 # Middleware stack (order matters: first added = outermost)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)

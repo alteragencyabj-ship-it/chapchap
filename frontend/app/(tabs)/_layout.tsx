@@ -2,10 +2,29 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/store/authStore';
 import { COLORS } from '../../src/config/constants';
+import { View, Platform } from 'react-native';
 
 export default function TabsLayout() {
   const user = useAuthStore((state) => state.user);
   const isArtisan = user?.role === 'artisan';
+
+  const floatingTabBarStyle = {
+    position: 'absolute' as const,
+    bottom: 30, // Floating high enough
+    left: 20,
+    right: 20,
+    elevation: 8,
+    backgroundColor: COLORS.white,
+    borderRadius: 35, // Pill shape
+    height: 70,
+    borderTopWidth: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15, // Softer shadow
+    shadowRadius: 20,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 10, // Adjust for OS
+    paddingTop: 10,
+  };
 
   if (isArtisan) {
     return (
@@ -14,22 +33,24 @@ export default function TabsLayout() {
           tabBarActiveTintColor: COLORS.primary,
           tabBarInactiveTintColor: COLORS.textLight,
           headerShown: false,
-          tabBarStyle: {
-            backgroundColor: COLORS.white,
-            borderTopWidth: 1,
-            borderTopColor: COLORS.border,
-            height: 60,
-            paddingBottom: 8,
-            paddingTop: 8,
+          tabBarStyle: floatingTabBarStyle,
+          tabBarLabelStyle: {
+            fontSize: 11,
+            fontWeight: '600',
+            marginBottom: Platform.OS === 'android' ? 8 : 0,
           },
+          tabBarItemStyle: {
+            // Ensure touch target is good
+            borderRadius: 35,
+          }
         }}
       >
         <Tabs.Screen
           name="artisan-home"
           options={{
-            title: 'Dashboard',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="grid" size={size} color={color} />
+            title: 'Accueil',
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? "grid" : "grid-outline"} size={24} color={color} />
             ),
           }}
         />
@@ -37,26 +58,26 @@ export default function TabsLayout() {
           name="my-missions"
           options={{
             title: 'Missions',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="briefcase" size={size} color={color} />
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? "briefcase" : "briefcase-outline"} size={24} color={color} />
             ),
           }}
         />
         <Tabs.Screen
           name="wallet"
           options={{
-            title: 'Portefeuille',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="wallet" size={size} color={color} />
+            title: 'Wallet',
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? "wallet" : "wallet-outline"} size={24} color={color} />
             ),
           }}
         />
         <Tabs.Screen
           name="messages"
           options={{
-            title: 'Messages',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="chatbubbles" size={size} color={color} />
+            title: 'Chat',
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? "chatbubbles" : "chatbubbles-outline"} size={24} color={color} />
             ),
           }}
         />
@@ -64,8 +85,8 @@ export default function TabsLayout() {
           name="profile"
           options={{
             title: 'Profil',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="person" size={size} color={color} />
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
             ),
           }}
         />
@@ -81,13 +102,11 @@ export default function TabsLayout() {
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textLight,
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: COLORS.white,
-          borderTopWidth: 1,
-          borderTopColor: COLORS.border,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+        tabBarStyle: floatingTabBarStyle,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginBottom: Platform.OS === 'android' ? 8 : 0,
         },
       }}
     >
@@ -95,26 +114,26 @@ export default function TabsLayout() {
         name="home"
         options={{
           title: 'Accueil',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "home" : "home-outline"} size={24} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="my-requests"
         options={{
-          title: 'Mes Demandes',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="list" size={size} color={color} />
+          title: 'Activités',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "receipt" : "receipt-outline"} size={24} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="messages"
         options={{
-          title: 'Messages',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubbles" size={size} color={color} />
+          title: 'Chat',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "chatbubbles" : "chatbubbles-outline"} size={24} color={color} />
           ),
         }}
       />
@@ -122,8 +141,8 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: 'Profil',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
           ),
         }}
       />
