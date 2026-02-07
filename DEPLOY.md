@@ -65,7 +65,7 @@ If service is disputed, admin resolves and can trigger refund or partial release
 | `JWT_ALGORITHM` | No | `HS256` | Default: HS256 |
 | `HOST` | No | `0.0.0.0` | Default: 0.0.0.0 |
 | `PORT` | No | `10000` | Render sets this automatically |
-| `ALLOWED_ORIGINS` | Yes | `https://chapchap.ci,https://staging.chapchap.ci` | Comma-separated, NO wildcard in prod |
+| `ALLOWED_ORIGINS` | Yes | `https://servicio.ci,https://staging.servicio.ci` | Comma-separated, NO wildcard in prod |
 | `PAYMENT_PROVIDER` | Yes | `mock` (staging) or `paiementpro` (prod) | Provider to use |
 | `PAIEMENTPRO_MERCHANT_ID` | Prod only | `PP-F6917` | PaiementPro merchant ID |
 | `PAIEMENTPRO_WEBHOOK_SECRET` | Prod only | (from PaiementPro dashboard) | For hashcode verification |
@@ -81,13 +81,13 @@ python -c "import secrets; print(secrets.token_hex(32))"
 ### Verify Deployment
 ```powershell
 # Health check
-Invoke-RestMethod -Uri "https://chapchap-api-staging.onrender.com/api/health"
+Invoke-RestMethod -Uri "https://servicio-api.onrender.com/api/health"
 
 # DB connectivity
-Invoke-RestMethod -Uri "https://chapchap-api-staging.onrender.com/api/health/db"
+Invoke-RestMethod -Uri "https://servicio-api.onrender.com/api/health/db"
 
 # Version info
-Invoke-RestMethod -Uri "https://chapchap-api-staging.onrender.com/api/health/version"
+Invoke-RestMethod -Uri "https://servicio-api.onrender.com/api/health/version"
 ```
 
 ---
@@ -113,12 +113,12 @@ Add to `frontend/eas.json`:
     "staging": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://chapchap-api-staging.onrender.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://servicio-api.onrender.com"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api.chapchap.ci"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.servicio.ci"
       }
     }
   },
@@ -130,7 +130,7 @@ Add to `frontend/eas.json`:
 
 ### Build Commands
 ```powershell
-cd C:\klawd-data\projects\chapchap\CHAPCHAP-main\frontend
+cd C:\klawd-data\projects\servicio-app\frontend
 
 # Staging (internal distribution)
 npx eas-cli build --platform android --profile staging
@@ -159,7 +159,7 @@ npx eas-cli update --branch staging --message "Bug fix v1.0.1"
 ### Setup
 1. Register merchant account at https://www.paiementpro.net
 2. Get merchant credentials from PaiementPro dashboard
-3. Configure webhook URL: `https://api.chapchap.ci/api/payments/webhook`
+3. Configure webhook URL: `https://api.servicio.ci/api/payments/webhook`
 4. Set `PAIEMENTPRO_MERCHANT_ID` and `PAIEMENTPRO_WEBHOOK_SECRET` in Render env vars
 5. Set `PAYMENT_PROVIDER=paiementpro` in Render env vars
 
@@ -193,9 +193,9 @@ npx eas-cli update --branch staging --message "Bug fix v1.0.1"
 
 ## 6. DNS & Custom Domain (Production)
 
-1. Register `chapchap.ci` domain
-2. Render: Add custom domain `api.chapchap.ci` -> auto-SSL
-3. Frontend: Configure deep links with `chapchap://` scheme (already in app.json)
+1. Register `servicio.ci` domain
+2. Render: Add custom domain `api.servicio.ci` -> auto-SSL
+3. Frontend: Configure deep links with `servicio://` scheme (already in app.json)
 
 ---
 
