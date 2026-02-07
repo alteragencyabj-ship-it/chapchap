@@ -26,16 +26,16 @@ interface NotifItem {
 }
 
 const ICON_MAP: Record<string, { name: string; color: string }> = {
-  request_accepted: { name: 'checkmark-circle', color: COLORS.secondary },
-  request_refused: { name: 'close-circle', color: '#ef4444' },
-  work_started: { name: 'hammer', color: COLORS.primary },
-  work_completed: { name: 'checkmark-done', color: COLORS.secondary },
-  request_new: { name: 'add-circle', color: COLORS.primary },
-  mission_confirmed: { name: 'trophy', color: '#f59e0b' },
-  new_message: { name: 'chatbubble', color: COLORS.blue },
-  account_blocked: { name: 'lock-closed', color: '#ef4444' },
-  credit_low: { name: 'warning', color: '#f59e0b' },
-  dispute_new: { name: 'alert-circle', color: '#ef4444' },
+  request_accepted: { name: 'checkmark-circle', color: COLORS.iconSage },
+  request_refused: { name: 'close-circle', color: COLORS.iconRose },
+  work_started: { name: 'hammer', color: COLORS.iconSteel },
+  work_completed: { name: 'checkmark-done', color: COLORS.iconSage },
+  request_new: { name: 'add-circle', color: COLORS.iconIce },
+  mission_confirmed: { name: 'trophy', color: COLORS.iconSand },
+  new_message: { name: 'chatbubble', color: COLORS.iconSteel },
+  account_blocked: { name: 'lock-closed', color: COLORS.iconRose },
+  credit_low: { name: 'warning', color: COLORS.iconSand },
+  dispute_new: { name: 'alert-circle', color: COLORS.iconRose },
 };
 
 export default function NotificationCenter() {

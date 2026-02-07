@@ -28,7 +28,7 @@ export default function Welcome() {
       <View style={styles.content}>
         <View style={styles.header}>
           <View style={styles.iconContainer}>
-            <Ionicons name="cube-outline" size={64} color={COLORS.primary} />
+            <Ionicons name="cube-outline" size={64} color={COLORS.iconSteel} />
           </View>
           <Text style={styles.title}>ARTISAN</Text>
           <Text style={styles.subtitle}>
@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     borderRadius: 100,
-    backgroundColor: COLORS.blue,
+    backgroundColor: COLORS.iconSage,
     opacity: 0.03,
   },
   content: {
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 30,
-    backgroundColor: 'rgba(255, 85, 0, 0.1)',
+    backgroundColor: `${COLORS.iconSteel}22`,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 32,

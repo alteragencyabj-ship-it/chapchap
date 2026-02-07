@@ -65,12 +65,12 @@ export default function Profile() {
             <View style={styles.statCard}>
               <Text style={styles.statValue}>{user.average_rating?.toFixed(1) || '0.0'}</Text>
               <Text style={styles.statLabel}>Note moyenne</Text>
-              <Ionicons name="star" size={24} color={COLORS.warning} />
+              <Ionicons name="star" size={24} color={COLORS.iconSand} />
             </View>
             <View style={styles.statCard}>
               <Text style={styles.statValue}>{user.total_missions || 0}</Text>
               <Text style={styles.statLabel}>Missions</Text>
-              <Ionicons name="briefcase" size={24} color={COLORS.primary} />
+              <Ionicons name="briefcase" size={24} color={COLORS.iconSage} />
             </View>
           </View>
         )}

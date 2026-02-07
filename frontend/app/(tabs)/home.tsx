@@ -78,7 +78,7 @@ const PulsingIcon = () => {
 
   return (
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-      <Ionicons name="flash" size={40} color={COLORS.white} />
+      <Ionicons name="flash" size={40} color={COLORS.iconSand} />
     </Animated.View>
   );
 };
@@ -219,7 +219,7 @@ export default function Home() {
                     <Ionicons
                       name={index === 0 ? "search" : index === 1 ? "calendar" : "checkmark"}
                       size={24}
-                      color={COLORS.primary}
+                      color={index === 0 ? COLORS.iconSteel : index === 1 ? COLORS.iconSage : COLORS.iconSand}
                     />
                   </View>
                 </View>
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 18,
     fontWeight: '700',
-    color: COLORS.primary,
+    color: COLORS.iconSteel,
   },
   content: {
     flex: 1,

@@ -105,7 +105,7 @@ export default function Demo() {
         </TouchableOpacity>
 
         <View style={styles.header}>
-          <Ionicons name="flash" size={60} color={COLORS.white} />
+          <Ionicons name="flash" size={60} color={COLORS.iconSand} />
           <Text style={styles.title}>Découvrez ARTISAN</Text>
           <Text style={styles.subtitle}>
             Testez l'app avec un compte démo
@@ -127,7 +127,7 @@ export default function Demo() {
             disabled={loading}
           >
             <View style={styles.roleIcon}>
-              <Ionicons name="person" size={40} color={COLORS.primary} />
+              <Ionicons name="person" size={40} color={COLORS.iconSteel} />
             </View>
             <View style={styles.roleInfo}>
               <Text style={styles.roleTitle}>Client</Text>
@@ -151,7 +151,7 @@ export default function Demo() {
             disabled={loading}
           >
             <View style={styles.roleIcon}>
-              <Ionicons name="construct" size={40} color={COLORS.primary} />
+              <Ionicons name="construct" size={40} color={COLORS.iconSage} />
             </View>
             <View style={styles.roleInfo}>
               <Text style={styles.roleTitle}>Artisan</Text>
@@ -169,7 +169,7 @@ export default function Demo() {
 
         <View style={styles.footer}>
           <View style={styles.infoCard}>
-            <Ionicons name="information-circle" size={20} color={COLORS.primary} />
+            <Ionicons name="information-circle" size={20} color={COLORS.iconIce} />
             <Text style={styles.infoText}>
               Comptes de démo pré-configurés pour tester l'app
             </Text>

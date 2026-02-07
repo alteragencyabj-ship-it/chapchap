@@ -93,7 +93,7 @@ export default function BookingConfirmation() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: COLORS.light,
   },
   content: {
     flex: 1,

@@ -30,7 +30,7 @@ export default function TabsLayout() {
     return (
       <Tabs
         screenOptions={{
-          tabBarActiveTintColor: COLORS.primary,
+          tabBarActiveTintColor: COLORS.iconSteel,
           tabBarInactiveTintColor: COLORS.textLight,
           headerShown: false,
           tabBarStyle: floatingTabBarStyle,
@@ -99,7 +99,7 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: COLORS.primary,
+        tabBarActiveTintColor: COLORS.iconSteel,
         tabBarInactiveTintColor: COLORS.textLight,
         headerShown: false,
         tabBarStyle: floatingTabBarStyle,

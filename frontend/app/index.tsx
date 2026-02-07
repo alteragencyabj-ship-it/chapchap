@@ -25,7 +25,7 @@ export default function Index() {
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color={COLORS.primary} />
+      <ActivityIndicator size="large" color={COLORS.iconSteel} />
       <Text style={styles.text}>ARTISAN</Text>
       <Text style={styles.slogan}>L'excellence à la demande.</Text>
     </View>

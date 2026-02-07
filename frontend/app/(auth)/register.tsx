@@ -94,7 +94,7 @@ export default function Register() {
                 activeOpacity={0.9}
               >
                 <View style={[styles.roleIcon, role === 'client' ? { backgroundColor: COLORS.white } : { backgroundColor: COLORS.light }]}>
-                  <Ionicons name="person" size={24} color={role === 'client' ? COLORS.primary : COLORS.textLight} />
+                  <Ionicons name="person" size={24} color={role === 'client' ? COLORS.iconSteel : COLORS.textLight} />
                 </View>
                 <Text style={[styles.roleText, role === 'client' && styles.roleTextActive]}>Client</Text>
               </TouchableOpacity>
@@ -105,7 +105,7 @@ export default function Register() {
                 activeOpacity={0.9}
               >
                 <View style={[styles.roleIcon, role === 'artisan' ? { backgroundColor: COLORS.white } : { backgroundColor: COLORS.light }]}>
-                  <Ionicons name="briefcase" size={24} color={role === 'artisan' ? COLORS.primary : COLORS.textLight} />
+                  <Ionicons name="briefcase" size={24} color={role === 'artisan' ? COLORS.iconSage : COLORS.textLight} />
                 </View>
                 <Text style={[styles.roleText, role === 'artisan' && styles.roleTextActive]}>Artisan</Text>
               </TouchableOpacity>
@@ -259,8 +259,8 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   roleCardActive: {
-    backgroundColor: COLORS.primary + '10', // 10% opacity primary
-    borderColor: COLORS.primary,
+    backgroundColor: COLORS.dark + '08',
+    borderColor: COLORS.dark,
   },
   roleIcon: {
     width: 40,
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
   },
   roleTextActive: {
-    color: COLORS.primary,
+    color: COLORS.dark,
     fontWeight: '700',
   },
   inputGroup: {

@@ -20,10 +20,10 @@ import { useAuthStore } from '../../src/store/authStore';
 const { width } = Dimensions.get('window');
 
 const LEVEL_COLORS: Record<string, string> = {
-  bronze: '#CD7F32',
-  silver: '#C0C0C0',
-  gold: '#FFD700',
-  diamond: '#B9F2FF',
+  bronze: COLORS.iconSand,
+  silver: COLORS.iconSteel,
+  gold: COLORS.iconSage,
+  diamond: COLORS.iconIce,
 };
 
 const LEVEL_ICONS: Record<string, string> = {

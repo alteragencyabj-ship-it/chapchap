@@ -16,10 +16,10 @@ import api from '../../src/services/api';
 import { COLORS } from '../../src/config/constants';
 
 const LEVEL_COLORS: Record<string, string> = {
-  bronze: '#CD7F32',
-  silver: '#C0C0C0',
-  gold: '#FFD700',
-  diamond: '#B9F2FF',
+  bronze: COLORS.iconSand,
+  silver: COLORS.iconSteel,
+  gold: COLORS.iconSage,
+  diamond: COLORS.iconIce,
 };
 
 const LEVEL_BENEFITS: Record<string, string[]> = {
@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
   },
   commissionLabel: {
     fontSize: 14,
-    color: '#aaa',
+    color: COLORS.textLight,
   },
   commissionAmount: {
     fontSize: 32,
@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
   },
   metaLabel: {
     fontSize: 11,
-    color: '#999',
+    color: COLORS.textLight,
   },
   metaValue: {
     fontSize: 14,
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
   metaDivider: {
     width: 1,
     height: 30,
-    backgroundColor: '#555',
+    backgroundColor: COLORS.border,
   },
   payButton: {
     flexDirection: 'row',

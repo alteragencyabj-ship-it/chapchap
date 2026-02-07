@@ -11,14 +11,22 @@ export const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ||
   Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_MAPS_KEY ||
   'YOUR_GOOGLE_MAPS_KEY_HERE';
 
+export const ICON_ACCENTS = {
+  sage: '#63786A',
+  steel: '#667389',
+  sand: '#7A715D',
+  rose: '#7F6666',
+  ice: '#687F88',
+};
+
 export const SERVICE_CATEGORIES = [
-  { id: 'menage', name: 'Ménage', icon: 'sparkles', color: '#FF5500', layout: 'large' },           // Orange ARTISAN
-  { id: 'plomberie', name: 'Plomberie', icon: 'water', color: '#0066FF', layout: 'medium' },        // Bleu Confiance
-  { id: 'electricite', name: 'Électricité', icon: 'flash', color: '#FF5500', layout: 'medium' },    // Orange ARTISAN
-  { id: 'bricolage', name: 'Bricolage', icon: 'hammer', color: '#0066FF', layout: 'medium' },       // Bleu Confiance
-  { id: 'mecanique', name: 'Mécanique', icon: 'car', color: '#FF5500', layout: 'large' },          // Orange ARTISAN
-  { id: 'taches_quotidiennes', name: 'Tâches Quotidiennes', icon: 'list', color: '#0066FF', layout: 'medium' }, // Bleu Confiance
-  { id: 'climatisation', name: 'Climatisation', icon: 'snow', color: '#FF5500', layout: 'medium' }, // Orange ARTISAN
+  { id: 'menage', name: 'Ménage', icon: 'sparkles', color: ICON_ACCENTS.sage, layout: 'large' },
+  { id: 'plomberie', name: 'Plomberie', icon: 'water', color: ICON_ACCENTS.steel, layout: 'medium' },
+  { id: 'electricite', name: 'Électricité', icon: 'flash', color: ICON_ACCENTS.sand, layout: 'medium' },
+  { id: 'bricolage', name: 'Bricolage', icon: 'hammer', color: ICON_ACCENTS.ice, layout: 'medium' },
+  { id: 'mecanique', name: 'Mécanique', icon: 'car', color: ICON_ACCENTS.rose, layout: 'large' },
+  { id: 'taches_quotidiennes', name: 'Tâches Quotidiennes', icon: 'list', color: ICON_ACCENTS.steel, layout: 'medium' },
+  { id: 'climatisation', name: 'Climatisation', icon: 'snow', color: ICON_ACCENTS.ice, layout: 'medium' },
 ];
 
 export const SERVICES_DATA = {
@@ -102,19 +110,24 @@ export const SERVICES_DATA = {
 export const SERVICE_TYPES = SERVICE_CATEGORIES.map(c => c.id);
 
 export const COLORS = {
-  primary: '#FF5500',        // Orange ARTISAN - Vibrant, Premium
-  secondary: '#1A1A1A',      // Black - Contrast, Modern
-  blue: '#0066FF',           // Vivid Blue - Trust
-  danger: '#FF3B30',         // iOS Red
-  warning: '#FFCC00',        // Warm Yellow
-  dark: '#121212',           // Ultra Dark Gray
-  light: '#F5F5F7',          // iOS/Apple Light Gray Background
-  white: '#FFFFFF',          // Pure White
-  border: '#E5E5EA',         // Soft Border
-  text: '#1C1C1E',           // Primary Text
-  textLight: '#8E8E93',      // Secondary Text
-  success: '#34C759',        // iOS Green
-  surface: '#FFFFFF',        // Card Background
-  shadow: '#000000',         // Shadow Color
+  primary: '#111111',
+  secondary: '#2A2A2A',
+  blue: ICON_ACCENTS.steel,
+  danger: ICON_ACCENTS.rose,
+  warning: ICON_ACCENTS.sand,
+  dark: '#0F0F0F',
+  light: '#F4F4F2',
+  white: '#FFFFFF',
+  border: '#E4E4E0',
+  text: '#1C1C1A',
+  textLight: '#7B7B75',
+  success: ICON_ACCENTS.sage,
+  surface: '#FFFFFF',
+  shadow: '#000000',
+  iconSage: ICON_ACCENTS.sage,
+  iconSteel: ICON_ACCENTS.steel,
+  iconSand: ICON_ACCENTS.sand,
+  iconRose: ICON_ACCENTS.rose,
+  iconIce: ICON_ACCENTS.ice,
 };
 
