@@ -31,3 +31,8 @@ backend/.env
 *.log
 *.sqlite
 backend/data/
+
+.metro-cache/
+.expo/
+node_modules/
+
