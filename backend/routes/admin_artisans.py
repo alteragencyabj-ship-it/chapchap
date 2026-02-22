@@ -13,8 +13,9 @@ import bcrypt
 import database as db_module
 from permissions import require_permission
 from audit import log_action
-from models import AdminArtisanCreate, StatusChangeRequest, CreditAdjustment, User
+from models import AdminArtisanCreate, StatusChangeRequest, CreditAdjustment, SettleCommissionsRequest, User
 import credit_system
+import wallet_service
 
 router = APIRouter(prefix="/api/admin/artisans", tags=["admin-artisans"])
 
@@ -121,6 +122,21 @@ async def list_artisans(
 
     total = await db_module.db.users.count_documents(query)
     return {"artisans": artisans, "total": total, "page": page, "limit": limit}
+
+
+@router.get("/blocked")
+async def list_blocked_artisans(
+    admin: dict = Depends(require_permission("credits.read")),
+):
+    """List all blocked artisans with their credit info and user details."""
+    blocked_credits = []
+    async for credit in db_module.db.artisan_credits.find({"is_blocked": True}).sort("blocked_since", -1):
+        artisan = await db_module.db.users.find_one({"_id": ObjectId(credit["artisan_id"])})
+        credit["_id"] = str(credit["_id"])
+        credit["artisan_name"] = artisan.get("name", "Inconnu") if artisan else "Inconnu"
+        credit["artisan_phone"] = artisan.get("phone", "") if artisan else ""
+        blocked_credits.append(credit)
+    return blocked_credits
 
 
 @router.get("/{artisan_id}")
@@ -277,3 +293,42 @@ async def adjust_credits(
     )
 
     return {"message": "Credits adjusted", "changes": update_set}
+
+
+@router.post("/{artisan_id}/settle-commissions")
+async def settle_artisan_commissions(
+    artisan_id: str,
+    body: SettleCommissionsRequest,
+    request: Request,
+    admin: dict = Depends(require_permission("credits.adjust")),
+):
+    """Settle all commissions for an artisan: reset to 0, unblock, reset cycle."""
+    # Validate artisan exists
+    artisan = await db_module.db.users.find_one({"_id": ObjectId(artisan_id), "role": "artisan"})
+    if not artisan:
+        raise HTTPException(status_code=404, detail="Artisan not found")
+
+    result = await wallet_service.settle_commissions(
+        artisan_id=artisan_id,
+        admin_id=str(admin["_id"]),
+        note=body.note,
+    )
+
+    await log_action(
+        actor_id=admin["_id"],
+        actor_email=admin["email"],
+        action="credits.settle",
+        resource_type="artisan_credits",
+        resource_id=artisan_id,
+        changes={
+            "commission_before": result.get("commission_before"),
+            "commission_after": result.get("commission_after"),
+            "amount_settled": result.get("amount_settled", 0),
+            "already_settled": result.get("already_settled", False),
+            "note": body.note,
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
+    wallet_after = await credit_system.get_credit_status(artisan_id)
+    return {"result": result, "wallet_after": wallet_after}

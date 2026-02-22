@@ -1,4 +1,4 @@
-﻿import React, { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../src/store/authStore';
@@ -21,7 +21,7 @@ export default function Index() {
         router.replace('/(auth)/welcome');
       }
     }
-  }, [isLoading]);
+  }, [isLoading, router, user]);
 
   return (
     <View style={styles.container}>

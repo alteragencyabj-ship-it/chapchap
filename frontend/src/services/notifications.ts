@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import api from './api';
@@ -15,9 +16,21 @@ Notifications.setNotificationHandler({
 
 /**
  * Register push token with backend after login.
+ * Handles permission request, Android channel creation, and token registration.
  */
 export async function registerPushToken(): Promise<string | null> {
   try {
+    // Android requires a notification channel
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Notifications',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#0A84FF',
+        sound: 'default',
+      });
+    }
+
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
@@ -27,7 +40,7 @@ export async function registerPushToken(): Promise<string | null> {
     }
 
     if (finalStatus !== 'granted') {
-      console.log('Push notification permission not granted');
+      console.log('[Notifications] Permission not granted');
       return null;
     }
 
@@ -36,23 +49,31 @@ export async function registerPushToken(): Promise<string | null> {
       Constants.expoConfig?.extra?.eas?.projectId ||
       Constants.easConfig?.projectId;
 
+    if (!projectId) {
+      console.warn('[Notifications] No projectId found — push tokens may not work in production');
+    }
+
     const tokenData = projectId
       ? await Notifications.getExpoPushTokenAsync({ projectId })
       : await Notifications.getExpoPushTokenAsync();
     const token = tokenData.data;
 
-    // Send to backend
-    await api.post('/notifications/register-token', { token });
-    console.log('Push token registered:', token);
+    // Send to backend with platform info
+    await api.post('/notifications/register-token', {
+      token,
+      platform: Platform.OS,
+    });
+    console.log('[Notifications] Push token registered:', token);
     return token;
   } catch (error) {
-    console.error('Failed to register push token:', error);
+    console.error('[Notifications] Failed to register push token:', error);
     return null;
   }
 }
 
 /**
  * Set up notification listeners (foreground + background tap).
+ * Returns a cleanup function that removes both subscriptions.
  */
 export function setupNotificationListeners(
   onNotificationReceived?: (notification: Notifications.Notification) => void,

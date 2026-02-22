@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,14 +6,40 @@ import {
   SafeAreaView,
   TouchableOpacity,
   StatusBar,
+  Animated,
+  BackHandler,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../src/config/constants';
+import * as Haptics from 'expo-haptics';
+import { COLORS, SHADOWS, SPACING, RADII, TYPOGRAPHY } from '../src/config/constants';
 
 export default function BookingConfirmation() {
   const router = useRouter();
-  const { bookingId, artisanName, serviceName, servicePrice } = useLocalSearchParams();
+  const { artisanName, serviceName, servicePrice } = useLocalSearchParams();
+
+  // Spring animation for the success icon
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      tension: 50,
+      friction: 3,
+      useNativeDriver: true,
+    }).start();
+  }, [scaleAnim]);
+
+  // Prevent back navigation to checkout (would cause double-submit risk)
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      // Navigate to home instead of going back to checkout
+      router.replace('/(tabs)/home');
+      return true;
+    });
+    return () => backHandler.remove();
+  }, [router]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -21,11 +47,11 @@ export default function BookingConfirmation() {
       
       <View style={styles.content}>
         {/* Success Icon */}
-        <View style={styles.iconContainer}>
+        <Animated.View style={[styles.iconContainer, { transform: [{ scale: scaleAnim }] }]}>
           <View style={styles.successCircle}>
             <Ionicons name="checkmark" size={60} color={COLORS.white} />
           </View>
-        </View>
+        </Animated.View>
 
         {/* Success Message */}
         <Text style={styles.title}>Réservation confirmée !</Text>
@@ -38,19 +64,19 @@ export default function BookingConfirmation() {
           <View style={styles.detailRow}>
             <Ionicons name="hammer" size={20} color={COLORS.primary} />
             <Text style={styles.detailLabel}>Service :</Text>
-            <Text style={styles.detailValue}>{serviceName}</Text>
+            <Text style={styles.detailValue}>{serviceName || 'Non specifie'}</Text>
           </View>
-          
+
           <View style={styles.detailRow}>
             <Ionicons name="person" size={20} color={COLORS.primary} />
             <Text style={styles.detailLabel}>Artisan :</Text>
-            <Text style={styles.detailValue}>{artisanName}</Text>
+            <Text style={styles.detailValue}>{artisanName || 'Non specifie'}</Text>
           </View>
-          
+
           <View style={styles.detailRow}>
             <Ionicons name="pricetag" size={20} color={COLORS.primary} />
             <Text style={styles.detailLabel}>Prix :</Text>
-            <Text style={styles.detailValue}>{servicePrice} FCFA</Text>
+            <Text style={styles.detailValue}>{servicePrice ? `${servicePrice} FCFA` : 'Sur devis'}</Text>
           </View>
         </View>
 
@@ -93,124 +119,108 @@ export default function BookingConfirmation() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.light,
+    backgroundColor: COLORS.neutral50,
   },
   content: {
     flex: 1,
-    padding: 24,
+    padding: SPACING['2xl'],
     justifyContent: 'center',
     alignItems: 'center',
   },
   iconContainer: {
-    marginBottom: 32,
+    marginBottom: SPACING['3xl'],
   },
   successCircle: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: COLORS.secondary,
+    backgroundColor: COLORS.success,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: COLORS.secondary,
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
+    shadowColor: COLORS.success,
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 10,
   },
   title: {
+    ...TYPOGRAPHY.h1,
     fontSize: 26,
-    fontWeight: 'bold',
-    color: COLORS.dark,
-    marginBottom: 8,
+    marginBottom: SPACING.sm,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
     color: COLORS.textLight,
-    marginBottom: 32,
+    marginBottom: SPACING['3xl'],
     textAlign: 'center',
+    lineHeight: 22,
   },
   detailsCard: {
     backgroundColor: COLORS.white,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: RADII.lg,
+    padding: SPACING.xl,
     width: '100%',
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    marginBottom: SPACING['2xl'],
+    ...SHADOWS.md,
   },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: SPACING.lg,
   },
   detailLabel: {
-    fontSize: 14,
+    ...TYPOGRAPHY.body,
     color: COLORS.textLight,
-    marginLeft: 12,
-    marginRight: 8,
+    marginLeft: SPACING.md,
+    marginRight: SPACING.sm,
   },
   detailValue: {
-    fontSize: 14,
+    ...TYPOGRAPHY.body,
     fontWeight: '600',
     color: COLORS.dark,
     flex: 1,
   },
   statusCard: {
     backgroundColor: `${COLORS.warning}15`,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: RADII.lg,
+    padding: SPACING.xl,
     width: '100%',
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: SPACING['3xl'],
     borderWidth: 1,
     borderColor: `${COLORS.warning}30`,
   },
   statusIcon: {
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   statusTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: COLORS.dark,
-    marginBottom: 8,
+    marginBottom: SPACING.sm,
     textAlign: 'center',
   },
   statusText: {
-    fontSize: 14,
+    ...TYPOGRAPHY.body,
     color: COLORS.textLight,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
   },
   buttonContainer: {
     width: '100%',
-    gap: 12,
+    gap: SPACING.md,
   },
   primaryButton: {
     backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: RADII.md,
+    paddingVertical: SPACING.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    shadowColor: COLORS.primary,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    gap: SPACING.sm,
+    minHeight: 52,
+    ...SHADOWS.md,
   },
   primaryButtonText: {
     fontSize: 16,
@@ -219,12 +229,13 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: RADII.md,
+    paddingVertical: SPACING.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: COLORS.border,
+    minHeight: 52,
   },
   secondaryButtonText: {
     fontSize: 16,

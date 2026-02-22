@@ -27,6 +27,7 @@ from payments.models import (
     WebhookPayload,
 )
 from payments.service import PaymentService
+from models import RequestStatus
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ async def _parse_webhook_payload(request: Request) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Invalid webhook schema: {exc}") from exc
 
-    normalized = model.dict(exclude_none=True)
+    normalized = model.model_dump(exclude_none=True)
     normalized["raw"] = payload
     return normalized
 
@@ -120,7 +121,18 @@ async def initiate_payment(
     if service_req.get("client_id") != user_id:
         raise HTTPException(status_code=403, detail="Not the client for this request")
 
-    if service_req.get("status") not in ("accepted", "in_progress"):
+    from state_machine import normalize_status
+
+    try:
+        req_status = normalize_status(service_req.get("status", ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Unknown request status") from exc
+
+    if req_status not in {
+        RequestStatus.ACCEPTEE,
+        RequestStatus.PAIEMENT_ESCROW,   # idempotent retries
+        RequestStatus.MISSION_EN_COURS,  # backward compatibility
+    }:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot pay for request in status: {service_req.get('status')}",
@@ -189,6 +201,34 @@ async def payment_webhook(request: Request):
     if result.get("error"):
         logger.warning("Webhook processing error: %s", result["error"])
         raise HTTPException(status_code=400, detail=result["error"])
+
+    # If escrow payment is captured, advance request to PAIEMENT_ESCROW.
+    if result.get("status") == "captured":
+        try:
+            from state_machine import transition
+
+            intent = await svc.get_status(result.get("payment_intent_id"))
+            if intent and intent.get("payment_type") == "escrow" and intent.get("request_id"):
+                actor_id = intent.get("client_id") or "system"
+                actor_role = "client" if intent.get("client_id") else "system"
+                await transition(
+                    request_id=intent["request_id"],
+                    new_status=RequestStatus.PAIEMENT_ESCROW,
+                    actor_id=actor_id,
+                    actor_role=actor_role,
+                    reason="payment_captured_webhook",
+                )
+        except HTTPException as exc:
+            # Ignore transitions that are already outdated/non-applicable.
+            if exc.status_code not in (400, 409):
+                raise
+            logger.info(
+                "Skipped request transition after webhook capture: status=%s detail=%s",
+                exc.status_code,
+                exc.detail,
+            )
+        except Exception:
+            logger.exception("Failed to transition request to paiement_escrow after capture")
 
     return {
         "status": "ok",

@@ -7,11 +7,18 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
-  Dimensions,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SERVICES_DATA, SERVICE_CATEGORIES } from '../src/config/constants';
+import {
+  COLORS,
+  SERVICES_DATA,
+  SERVICE_CATEGORIES,
+  SHADOWS,
+  SPACING,
+  RADII,
+  TYPOGRAPHY,
+} from '../src/config/constants';
 
 interface Service {
   id: string;
@@ -21,13 +28,14 @@ interface Service {
   category?: string;
 }
 
-const { width } = Dimensions.get('window');
-
 export default function SelectService() {
   const router = useRouter();
   const { categoryId, categoryName } = useLocalSearchParams();
 
-  const services: Service[] = SERVICES_DATA[categoryId as keyof typeof SERVICES_DATA] || [];
+  const services = useMemo<Service[]>(
+    () => SERVICES_DATA[categoryId as keyof typeof SERVICES_DATA] || [],
+    [categoryId]
+  );
 
   // Find current category to get its specific color styling
   const currentCategory = SERVICE_CATEGORIES.find(c => c.id === categoryId);
@@ -65,41 +73,41 @@ export default function SelectService() {
 
   const getServiceIcon = (serviceName: string): any => {
     const name = serviceName.toLowerCase();
-    // Ménage
+    // Menage
     if (name.includes('vitres')) return 'layers-outline';
     if (name.includes('balcon')) return 'leaf-outline';
-    if (name.includes('événement')) return 'wine-outline';
-    if (name.includes('pièce')) return 'home-outline';
+    if (name.includes('evenement') || name.includes('événement')) return 'wine-outline';
+    if (name.includes('piece') || name.includes('pièce')) return 'home-outline';
     if (name.includes('nettoyage')) return 'sparkles-outline';
 
     // Plomberie
     if (name.includes('robinet')) return 'water-outline';
     if (name.includes('chasse')) return 'ellipse-outline';
-    if (name.includes('wc')) return 'trash-bin-outline'; // Or similar
-    if (name.includes('débouchage')) return 'sync-outline';
+    if (name.includes('wc')) return 'trash-bin-outline';
+    if (name.includes('debouchage') || name.includes('débouchage')) return 'sync-outline';
     if (name.includes('douchette')) return 'rainy-outline';
     if (name.includes('machine')) return 'cog-outline';
 
-    // Electricité
+    // Electricite
     if (name.includes('ampoule')) return 'bulb-outline';
     if (name.includes('prise')) return 'power-outline';
     if (name.includes('interrupteur')) return 'toggle-outline';
     if (name.includes('ventilateur')) return 'aperture-outline';
     if (name.includes('tv')) return 'tv-outline';
-    if (name.includes('frigo') || name.includes('congélateur')) return 'cube-outline';
+    if (name.includes('frigo') || name.includes('congelateur') || name.includes('congélateur')) return 'cube-outline';
     if (name.includes('micro-ondes')) return 'restaurant-outline';
     if (name.includes('clim')) return 'snow-outline';
 
     // Bricolage
     if (name.includes('tringle')) return 'resize-outline';
-    if (name.includes('étagère')) return 'list-outline';
+    if (name.includes('etagere') || name.includes('étagère')) return 'list-outline';
     if (name.includes('meuble')) return 'file-tray-stacked-outline';
     if (name.includes('tableau')) return 'image-outline';
 
-    // Mécanique
+    // Mecanique
     if (name.includes('roue')) return 'disc-outline';
     if (name.includes('batterie')) return 'battery-charging-outline';
-    if (name.includes('essuie')) return 'wifi-outline'; // Looks like wiper
+    if (name.includes('essuie')) return 'wifi-outline';
     if (name.includes('pneus')) return 'radio-button-on-outline';
     if (name.includes('carburant')) return 'water-outline';
 
@@ -121,7 +129,7 @@ export default function SelectService() {
           <Ionicons name="arrow-back" size={24} color={COLORS.dark} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{categoryName}</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView
@@ -129,17 +137,17 @@ export default function SelectService() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.introContainer}>
-          <Text style={styles.title}>Précisez votre demande</Text>
-          <Text style={styles.subtitle}>Sélectionnez l'option qui correspond le mieux à votre besoin.</Text>
+          <Text style={styles.title}>Precisez votre demande</Text>
+          <Text style={styles.subtitle}>Selectionnez l'option qui correspond le mieux a votre besoin.</Text>
         </View>
 
-        {Object.entries(groupedServices).map(([groupName, groupItems], groupIndex) => (
+        {Object.entries(groupedServices).map(([groupName, groupItems]) => (
           <View key={groupName} style={styles.groupContainer}>
             {groupName !== 'General' && (
               <Text style={styles.groupTitle}>{groupName}</Text>
             )}
 
-            {groupItems.map((service, index) => (
+            {groupItems.map((service) => (
               <TouchableOpacity
                 key={service.id}
                 style={styles.card}
@@ -184,42 +192,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 10,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.light,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    ...SHADOWS.sm,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.dark,
+    ...TYPOGRAPHY.h3,
+  },
+  headerSpacer: {
+    width: 44,
   },
   scrollContent: {
-    paddingHorizontal: 24,
+    paddingHorizontal: SPACING['2xl'],
     paddingBottom: 40,
   },
   introContainer: {
-    marginTop: 20,
-    marginBottom: 30,
+    marginTop: SPACING.xl,
+    marginBottom: SPACING['3xl'],
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: COLORS.dark,
-    marginBottom: 8,
+    ...TYPOGRAPHY.h1,
     letterSpacing: -0.5,
+    marginBottom: SPACING.sm,
   },
   subtitle: {
     fontSize: 16,
@@ -227,37 +230,32 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   groupContainer: {
-    marginBottom: 24,
+    marginBottom: SPACING['2xl'],
   },
   groupTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    ...TYPOGRAPHY.h3,
     color: COLORS.text,
-    marginBottom: 16,
-    marginLeft: 4,
+    marginBottom: SPACING.lg,
+    marginLeft: SPACING.xs,
   },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.white,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderRadius: RADII.xl,
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.02)',
+    borderColor: COLORS.neutral100,
+    ...SHADOWS.sm,
   },
   cardIconContainer: {
     width: 48,
     height: 48,
-    borderRadius: 16,
+    borderRadius: RADII.lg,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: SPACING.lg,
   },
   cardContent: {
     flex: 1,
@@ -267,7 +265,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.dark,
-    marginBottom: 4,
+    marginBottom: SPACING.xs,
   },
   priceContainer: {
     flexDirection: 'row',
@@ -278,6 +276,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cardAction: {
-    paddingLeft: 12,
+    paddingLeft: SPACING.md,
   },
 });

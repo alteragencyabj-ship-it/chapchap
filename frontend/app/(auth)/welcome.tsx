@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,12 @@ import {
   TouchableOpacity,
   SafeAreaView,
   StatusBar,
-  Dimensions,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../src/config/constants';
-
-const { width } = Dimensions.get('window');
+import * as Haptics from 'expo-haptics';
+import { COLORS, RADII } from '../../src/config/constants';
 
 export default function Welcome() {
   const router = useRouter();
@@ -32,14 +31,14 @@ export default function Welcome() {
           </View>
           <Text style={styles.title}>ARTISAN</Text>
           <Text style={styles.subtitle}>
-            L’excellence à la demande.{'\n'}Des experts qualifiés, chez vous.
+            L'excellence à la demande.{'\n'}Des experts qualifiés, chez vous.
           </Text>
         </View>
 
         <View style={styles.footer}>
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => router.push('/(auth)/register')}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push('/(auth)/register'); }}
             activeOpacity={0.8}
           >
             <Text style={styles.primaryButtonText}>Commencer</Text>
@@ -50,6 +49,7 @@ export default function Welcome() {
             <TouchableOpacity
               style={styles.secondaryButton}
               onPress={() => router.push('/(auth)/login')}
+              hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
             >
               <Text style={styles.secondaryButtonText}>Déjà un compte ? Connexion</Text>
             </TouchableOpacity>
@@ -57,6 +57,7 @@ export default function Welcome() {
             <TouchableOpacity
               style={styles.demoLink}
               onPress={() => router.push('/(auth)/demo')}
+              hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
             >
               <Text style={styles.demoLinkText}>Mode Démo</Text>
             </TouchableOpacity>
@@ -99,23 +100,24 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-between',
     paddingHorizontal: 32,
-    paddingVertical: 20,
+    paddingTop: 20,
+    paddingBottom: Platform.OS === 'android' ? 32 : 20,
   },
   header: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'flex-start', // Left align for more modern feel
+    alignItems: 'flex-start',
     marginTop: 60,
   },
   iconContainer: {
     width: 100,
     height: 100,
-    borderRadius: 30,
+    borderRadius: RADII.xl + 10,
     backgroundColor: `${COLORS.iconSteel}22`,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 32,
-    transform: [{ rotate: '-10deg' }], // Slight dynamic tilt
+    transform: [{ rotate: '-10deg' }],
   },
   title: {
     fontSize: 56,
@@ -130,7 +132,6 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     lineHeight: 28,
     fontWeight: '500',
-    maxWidth: '80%',
   },
   footer: {
     width: '100%',
@@ -161,10 +162,13 @@ const styles = StyleSheet.create({
   },
   secondaryActions: {
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   secondaryButton: {
-    paddingVertical: 8,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
   },
   secondaryButtonText: {
     color: COLORS.secondary,
@@ -172,7 +176,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   demoLink: {
-    padding: 8,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
   },
   demoLinkText: {
     color: COLORS.textLight,

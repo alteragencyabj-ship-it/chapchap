@@ -97,9 +97,6 @@ async def get_or_create_credit(artisan_id: str) -> Dict[str, Any]:
         update_set["credit_max"] = credit_max
 
     credit_remaining = _coerce_int(credit.get("credit_remaining"), credit_max)
-    if credit_remaining < 0:
-        credit_remaining = 0
-        update_set["credit_remaining"] = 0
     if credit_remaining > credit_max:
         credit_remaining = credit_max
         update_set["credit_remaining"] = credit_max
@@ -143,48 +140,76 @@ async def check_can_accept_mission(artisan_id: str) -> Dict[str, Any]:
     """Verifie si l'artisan peut accepter une nouvelle mission."""
     credit = await get_or_create_credit(artisan_id)
 
-    can_accept = credit["credit_remaining"] > 0 and not credit["is_blocked"]
+    commission_due = _coerce_int(credit.get("commission_due"), 0)
+    is_blocked = bool(credit.get("is_blocked")) or commission_due >= CYCLE_COMMISSION_DUE
+    can_accept = commission_due < CYCLE_COMMISSION_DUE and not is_blocked
     reason = None
     if not can_accept:
-        amount_due = _coerce_int(credit.get("commission_due"), CYCLE_COMMISSION_DUE)
-        reason = _build_suspension_message(amount_due)
+        reason = "Remboursez 10 000 FCFA pour continuer"
 
     return {
         "can_accept": can_accept,
         "credit_remaining": credit["credit_remaining"],
         "credit_max": credit["credit_max"],
-        "commission_due": _coerce_int(credit.get("commission_due"), 0),
+        "commission_due": commission_due,
         "commission_per_mission": COMMISSION_PER_MISSION,
-        "is_blocked": credit["is_blocked"],
+        "commission_rate_percent": f"{_format_fcfa(COMMISSION_PER_MISSION)} FCFA / mission",
+        "commission_model": "fixed_per_mission",
+        "is_blocked": is_blocked,
         "reason": reason,
     }
 
 
-async def consume_credit(artisan_id: str, booking_id: str, amount: float) -> Dict[str, Any]:
+async def consume_credit(
+    artisan_id: str,
+    booking_id: str,
+    amount: float,
+    client_id: Optional[str] = None,
+    service_name: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Consomme 1 mission de credit et ajoute la commission fixe.
     Appele quand une mission est liberee/terminee.
     """
-    credit = await get_or_create_credit(artisan_id)
-
-    if credit["is_blocked"]:
-        due = _coerce_int(credit.get("commission_due"), CYCLE_COMMISSION_DUE)
+    # Idempotency guard: a mission can impact credits/commission only once.
+    existing_tx = await db_module.db.mission_transactions.find_one(
+        {"artisan_id": artisan_id, "booking_id": booking_id},
+        sort=[("created_at", -1)],
+    )
+    if existing_tx:
+        status = await get_credit_status(artisan_id)
         return {
-            "error": "Account blocked",
-            "is_blocked": True,
-            "commission_due": due,
-            "message": _build_suspension_message(due),
+            "duplicate": True,
+            "credits_before": status["credit_remaining"],
+            "credits_after": status["credit_remaining"],
+            "credit_remaining": status["credit_remaining"],
+            "credit_max": status["credit_max"],
+            "earnings_before": float(status.get("total_earned", 0.0)),
+            "earnings_after": float(status.get("total_earned", 0.0)),
+            "commission_due": status["commission_due"],
+            "commission_this_mission": _coerce_int(existing_tx.get("commission"), COMMISSION_PER_MISSION),
+            "artisan_earning": float(existing_tx.get("artisan_earning", existing_tx.get("amount", 0))),
+            "is_blocked": status["is_blocked"],
+            "message": "Already applied",
         }
+
+    credit = await get_or_create_credit(artisan_id)
 
     now = _now_utc()
     gross_amount = float(amount)
     commission = COMMISSION_PER_MISSION
-    artisan_earning = max(0.0, gross_amount - commission)
+    # Product requirement: artisan dashboard shows gross mission gains.
+    artisan_earning = max(0.0, gross_amount)
 
-    new_credit_remaining = max(0, _coerce_int(credit.get("credit_remaining"), MISSIONS_PER_CYCLE) - 1)
+    credits_before = _coerce_int(credit.get("credit_remaining"), MISSIONS_PER_CYCLE)
+    earnings_before = float(credit.get("total_earned", 0.0))
+    # Wallet updates must always apply on mission completion, even if account is already blocked.
+    # Blocking only prevents accepting NEW missions (checked in check_can_accept_mission/accept endpoint).
+    new_credit_remaining = credits_before - 1
     new_commission_due = _coerce_int(credit.get("commission_due"), 0) + commission
-    should_block = new_credit_remaining == 0
+    should_block = new_commission_due >= CYCLE_COMMISSION_DUE
     blocked_since = now if should_block else None
+    earnings_after = earnings_before + artisan_earning
 
     await db_module.db.artisan_credits.update_one(
         {"artisan_id": artisan_id},
@@ -192,10 +217,10 @@ async def consume_credit(artisan_id: str, booking_id: str, amount: float) -> Dic
             "$set": {
                 "credit_remaining": new_credit_remaining,
                 "credit_max": MISSIONS_PER_CYCLE,
-                "missions_completed_in_cycle": MISSIONS_PER_CYCLE - new_credit_remaining,
+                "missions_completed_in_cycle": max(0, MISSIONS_PER_CYCLE - new_credit_remaining),
                 "commission_due": new_commission_due,
                 "commission_per_mission": COMMISSION_PER_MISSION,
-                "total_earned": float(credit.get("total_earned", 0.0)) + artisan_earning,
+                "total_earned": earnings_after,
                 "is_blocked": should_block,
                 "blocked_since": blocked_since,
                 "blocked_at": blocked_since,
@@ -209,6 +234,8 @@ async def consume_credit(artisan_id: str, booking_id: str, amount: float) -> Dic
         "_id": ObjectId(),
         "artisan_id": artisan_id,
         "booking_id": booking_id,
+        "client_id": client_id,
+        "service_name": service_name,
         "amount": gross_amount,
         "commission": commission,
         "artisan_earning": artisan_earning,
@@ -222,8 +249,12 @@ async def consume_credit(artisan_id: str, booking_id: str, amount: float) -> Dic
         message = _build_suspension_message(new_commission_due)
 
     return {
+        "credits_before": credits_before,
+        "credits_after": new_credit_remaining,
         "credit_remaining": new_credit_remaining,
         "credit_max": MISSIONS_PER_CYCLE,
+        "earnings_before": earnings_before,
+        "earnings_after": earnings_after,
         "commission_due": new_commission_due,
         "commission_this_mission": commission,
         "artisan_earning": artisan_earning,
@@ -340,8 +371,8 @@ async def get_credit_status(artisan_id: str) -> Dict[str, Any]:
 
     blocked_since = credit.get("blocked_since") or credit.get("blocked_at")
     last_reminder_sent = credit.get("last_reminder_sent")
-    is_blocked = bool(credit.get("is_blocked"))
     commission_due = _coerce_int(credit.get("commission_due"), 0)
+    is_blocked = bool(credit.get("is_blocked")) or commission_due >= CYCLE_COMMISSION_DUE
 
     needs_payment_reminder = False
     if is_blocked:
@@ -359,15 +390,18 @@ async def get_credit_status(artisan_id: str) -> Dict[str, Any]:
     return {
         "artisan_id": artisan_id,
         "level": "fixed",  # compat legacy
+        "level_name": "Plan fixe",
         "credit_remaining": credit_remaining,
         "credit_max": credit_max,
         "missions_completed_in_cycle": missions_completed,
         "missions_remaining_in_cycle": credit_remaining,
         "commission_due": commission_due,
         "commission_per_mission": COMMISSION_PER_MISSION,
+        "commission_rate_percent": f"{_format_fcfa(COMMISSION_PER_MISSION)} FCFA / mission",
+        "commission_model": "fixed_per_mission",
         "cycle_commission_due": CYCLE_COMMISSION_DUE,
         "is_blocked": is_blocked,
-        "can_accept_mission": credit_remaining > 0 and not is_blocked,
+        "can_accept_mission": commission_due < CYCLE_COMMISSION_DUE and not is_blocked,
         "blocked_since": blocked_since,
         "last_reminder_sent": last_reminder_sent,
         "needs_payment_reminder": needs_payment_reminder,
@@ -380,4 +414,7 @@ async def get_credit_status(artisan_id: str) -> Dict[str, Any]:
         "total_earned": float(credit.get("total_earned", 0.0)),
         "total_paid": float(credit.get("total_paid", 0.0)),
         "last_payment_at": credit.get("last_payment_at"),
+        "next_level": None,
+        "next_level_name": None,
+        "missions_to_next_level": None,
     }

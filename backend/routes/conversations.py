@@ -26,6 +26,45 @@ async def _get_user(current_user: dict) -> dict:
     return user
 
 
+def _display_name(user_doc: dict | None) -> str:
+    if not user_doc:
+        return "Utilisateur"
+    name = str(user_doc.get("name") or "").strip()
+    if name:
+        return name
+    first = str(user_doc.get("first_name") or "").strip()
+    last = str(user_doc.get("last_name") or "").strip()
+    full = f"{first} {last}".strip()
+    if full:
+        return full
+    email = str(user_doc.get("email") or "").strip()
+    if email:
+        return email.split("@")[0]
+    return "Utilisateur"
+
+
+async def _enrich_conversation_for_user(conv: dict, current_user_id: str) -> dict:
+    """Attach the other participant identity for UI labels."""
+    participants = [str(p) for p in conv.get("participants", [])]
+    other_ids = [p for p in participants if p != current_user_id]
+    other_id = other_ids[0] if other_ids else None
+
+    other_user = None
+    if other_id:
+        try:
+            other_user = await db_module.db.users.find_one(
+                {"_id": ObjectId(other_id)},
+                {"name": 1, "first_name": 1, "last_name": 1, "email": 1, "role": 1},
+            )
+        except Exception:
+            other_user = None
+
+    conv["other_party_id"] = other_id
+    conv["other_party_name"] = _display_name(other_user)
+    conv["other_party_role"] = str(other_user.get("role")) if other_user and other_user.get("role") else None
+    return conv
+
+
 @router.get("", response_model=List[Conversation])
 async def list_conversations(
     current_user: dict = Depends(get_current_user),
@@ -38,6 +77,7 @@ async def list_conversations(
         {"participants": user["_id"]}
     ).sort("last_message_at", -1):
         conv["_id"] = str(conv["_id"])
+        conv = await _enrich_conversation_for_user(conv, user["_id"])
         results.append(Conversation(**conv))
     return results
 
@@ -58,6 +98,7 @@ async def get_conversation(
         raise HTTPException(status_code=403, detail="Not a participant")
 
     conv["_id"] = str(conv["_id"])
+    conv = await _enrich_conversation_for_user(conv, user["_id"])
     return Conversation(**conv)
 
 
@@ -104,6 +145,24 @@ async def send_message(
     if user["_id"] not in conv.get("participants", []):
         raise HTTPException(status_code=403, detail="Not a participant")
 
+    # Check chat availability via request status
+    req_id = conv.get("request_id")
+    if req_id:
+        from state_machine import normalize_status, is_chat_available
+        linked_req = await db_module.db.service_requests.find_one(
+            {"_id": ObjectId(req_id)}, {"status": 1}
+        )
+        if linked_req:
+            try:
+                req_status = normalize_status(linked_req["status"])
+                if not is_chat_available(req_status):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Le chat n'est pas disponible dans l'etat actuel de la mission."
+                    )
+            except ValueError:
+                pass
+
     # Determine receiver
     other_id = [p for p in conv["participants"] if p != user["_id"]]
     receiver_id = other_id[0] if other_id else user["_id"]
@@ -141,6 +200,26 @@ async def send_message(
             payload = {**msg_doc, "timestamp": now.isoformat()}
             await sio.emit("receive_message", payload, to=sid)
 
+    # Persist + push notification for incoming message (without refresh).
+    try:
+        from notification_service import send_notification
+
+        await send_notification(
+            recipient_id=receiver_id,
+            notif_type="new_message",
+            data={
+                "conversation_id": conversation_id,
+                "request_id": conv.get("request_id"),
+            },
+            template_vars={
+                "sender_name": _display_name(user),
+                "preview": data.message[:80],
+            },
+        )
+    except Exception:
+        # Never block messaging if notification delivery fails.
+        pass
+
     return Message(**msg_doc)
 
 
@@ -151,6 +230,13 @@ async def mark_read(
 ):
     """Mark all messages in this conversation as read for the current user."""
     user = await _get_user(current_user)
+
+    # Verify participant
+    conv = await db_module.db.conversations.find_one({"_id": ObjectId(conversation_id)})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation introuvable")
+    if user["_id"] not in conv.get("participants", []) and user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Non autorise")
 
     # Reset unread counter
     await db_module.db.conversations.update_one(

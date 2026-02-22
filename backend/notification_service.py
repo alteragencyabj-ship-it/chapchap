@@ -171,7 +171,53 @@ async def _deliver_push(token: str, title: str, body: str, data: Optional[Dict] 
 async def seed_notification_templates() -> None:
     """Seed default notification templates if they don't exist."""
     templates = [
-        # Client notifications
+        # === V2 State Machine: New notification types ===
+
+        # Client notifications -- Quote flow
+        {
+            "key": "quote_received",
+            "title_template": "Devis recu",
+            "body_template": "{artisan_name} a envoye un devis de {amount} FCFA",
+            "channels": ["in_app", "push"],
+            "priority": "high",
+        },
+        {
+            "key": "quote_accepted",
+            "title_template": "Devis accepte",
+            "body_template": "{client_name} a accepte votre devis",
+            "channels": ["in_app", "push"],
+            "priority": "high",
+        },
+        {
+            "key": "payment_prompt",
+            "title_template": "Paiement requis",
+            "body_template": "Procedez au paiement pour confirmer votre reservation.",
+            "channels": ["in_app", "push"],
+            "priority": "high",
+        },
+        {
+            "key": "payment_confirmed",
+            "title_template": "Paiement confirme",
+            "body_template": "Paiement recu. {artisan_name} sera bientot en route.",
+            "channels": ["in_app", "push"],
+            "priority": "high",
+        },
+        {
+            "key": "escrow_confirmed",
+            "title_template": "Paiement securise",
+            "body_template": "Le paiement du client est securise. Confirmez votre depart.",
+            "channels": ["in_app", "push"],
+            "priority": "high",
+        },
+        {
+            "key": "artisan_en_route",
+            "title_template": "Artisan en route",
+            "body_template": "{artisan_name} est en route vers vous.",
+            "channels": ["in_app", "push"],
+            "priority": "high",
+        },
+
+        # Client notifications -- Legacy compatible
         {
             "key": "request_accepted",
             "title_template": "Demande acceptee",
@@ -196,14 +242,35 @@ async def seed_notification_templates() -> None:
         {
             "key": "work_completed",
             "title_template": "Travail termine",
-            "body_template": "Travail termine ! Confirmez si tout est en ordre.",
+            "body_template": "Travail termine ! Validez si tout est en ordre.",
             "channels": ["in_app", "push"],
             "priority": "high",
+        },
+        {
+            "key": "validate_reminder",
+            "title_template": "Validation en attente",
+            "body_template": "N'oubliez pas de valider le travail de l'artisan.",
+            "channels": ["in_app", "push"],
+            "priority": "normal",
         },
         {
             "key": "confirm_reminder",
             "title_template": "Confirmation en attente",
             "body_template": "N'oubliez pas de confirmer que le travail est satisfaisant.",
+            "channels": ["in_app", "push"],
+            "priority": "normal",
+        },
+        {
+            "key": "mission_validated",
+            "title_template": "Mission validee",
+            "body_template": "La mission a ete validee. Merci !",
+            "channels": ["in_app", "push"],
+            "priority": "normal",
+        },
+        {
+            "key": "rating_prompt",
+            "title_template": "Votre avis compte",
+            "body_template": "Notez votre artisan pour finaliser l'experience.",
             "channels": ["in_app", "push"],
             "priority": "normal",
         },
@@ -214,6 +281,7 @@ async def seed_notification_templates() -> None:
             "channels": ["in_app", "push"],
             "priority": "normal",
         },
+
         # Artisan notifications
         {
             "key": "request_new",
@@ -250,21 +318,40 @@ async def seed_notification_templates() -> None:
             "channels": ["in_app", "push"],
             "priority": "normal",
         },
+
+        # Cancellation & Expiration
         {
             "key": "request_cancelled",
             "title_template": "Demande annulee",
             "body_template": "La demande a ete annulee par le {by}",
-            "channels": ["in_app"],
+            "channels": ["in_app", "push"],
             "priority": "normal",
         },
-        # Admin notifications
+        {
+            "key": "request_expired",
+            "title_template": "Demande expiree",
+            "body_template": "La demande a expire : {reason}",
+            "channels": ["in_app", "push"],
+            "priority": "normal",
+        },
+
+        # Dispute notifications
         {
             "key": "dispute_new",
             "title_template": "Nouveau litige",
-            "body_template": "Nouveau litige sur mission #{id}",
+            "body_template": "Litige ouvert sur mission #{id}.",
             "channels": ["in_app", "push"],
             "priority": "high",
         },
+        {
+            "key": "dispute_opened",
+            "title_template": "Litige ouvert",
+            "body_template": "Un litige est en cours. Ouvrez Assistance pour la suite.",
+            "channels": ["in_app", "push"],
+            "priority": "high",
+        },
+
+        # Admin / System
         {
             "key": "anomaly_detected",
             "title_template": "Anomalie detectee",

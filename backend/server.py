@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from typing import List, Optional
 from datetime import UTC, datetime
 from bson import ObjectId
+from bson.errors import InvalidId
 import bcrypt
 from functools import lru_cache
 
@@ -25,6 +26,11 @@ from auth import get_current_user, create_access_token, get_optional_user
 from socketio_server import sio
 from notification_service import seed_notification_templates
 from middleware import CorrelationIdMiddleware, RateLimitMiddleware
+from referral_system import (
+    generate_unique_referral_id,
+    get_referral_artisan_by_code,
+    normalize_referral_code,
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -32,6 +38,17 @@ load_dotenv(ROOT_DIR / '.env')
 # Environment config
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
+_default_rpm = 300 if ENVIRONMENT != "production" else 60
+RATE_LIMIT_RPM = int(os.getenv("RATE_LIMIT_RPM", str(_default_rpm)))
+USER_UPDATE_ALLOWED_FIELDS = {
+    "name",
+    "phone",
+    "city",
+    "quartier",
+    "address",
+    "photo",
+    "specialties",
+}
 
 
 def _validate_secrets():
@@ -61,6 +78,17 @@ async def lifespan(app: FastAPI):
     import event_handlers  # noqa: F401
     # Seed notification templates
     await seed_notification_templates()
+    # Ensure unique indexes for new collections
+    import database as db_module
+    try:
+        await db_module.db.pending_timeouts.create_index("key", unique=True)
+    except Exception:
+        pass
+    # Restore pending timeouts from DB (survive server restarts)
+    from scheduler import restore_timeouts_on_startup
+    restored = await restore_timeouts_on_startup()
+    if restored:
+        print(f"[OK] Restored {restored} pending timeouts")
     print(f"[OK] Application startup complete (env={ENVIRONMENT})")
     yield
     # Shutdown
@@ -70,14 +98,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="ARTISAN API", lifespan=lifespan)
 
 # Middleware stack (order matters: first added = outermost)
-app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=RATE_LIMIT_RPM)
 app.add_middleware(CorrelationIdMiddleware)
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS if ALLOWED_ORIGINS != ["*"] else ["*"],
-    allow_credentials=True,
+    allow_credentials=ALLOWED_ORIGINS != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -94,13 +122,24 @@ async def register(user_data: UserCreate):
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    user_dict = user_data.dict(exclude={"password"}, exclude_none=True)
+    user_dict = user_data.model_dump(exclude={"password", "referral_code"}, exclude_none=True)
     user_dict["created_at"] = datetime.utcnow()
+    user_dict["affiliation_qualified"] = False
+    user_dict["affiliated_clients_count"] = 0
 
-    if user_data.role == "artisan":
+    referral_code = normalize_referral_code(getattr(user_data, "referral_code", None))
+
+    if user_data.role == "client" and referral_code:
+        referral_artisan = await get_referral_artisan_by_code(referral_code)
+        if not referral_artisan:
+            raise HTTPException(status_code=400, detail="Referral code invalid")
+        user_dict["referred_by_artisan_id"] = referral_artisan["_id"]
+        user_dict["referred_by_referral_id"] = referral_code
+    elif user_data.role == "artisan":
         user_dict["verified"] = False
         user_dict["average_rating"] = 0.0
         user_dict["total_missions"] = 0
+        user_dict["referral_id"] = await generate_unique_referral_id(user_data.name)
 
     if user_data.password:
         hashed = bcrypt.hashpw(user_data.password.encode(), bcrypt.gensalt())
@@ -176,9 +215,38 @@ async def get_artisans(
     if verified_only:
         query["verified"] = True
 
-    artisans = []
+    raw_artisans = []
     async for artisan in db_module.db.users.find(query).limit(50):
-        artisan["_id"] = str(artisan["_id"])
+        raw_artisans.append(artisan)
+
+    artisan_ids = [str(a["_id"]) for a in raw_artisans]
+    profile_photo_by_user_id = {}
+    if artisan_ids:
+        async for profile in db_module.db.artisan_profiles.find(
+            {"user_id": {"$in": artisan_ids}},
+            {"user_id": 1, "photo_url": 1},
+        ):
+            user_id = profile.get("user_id")
+            photo_url = profile.get("photo_url")
+            if user_id and photo_url:
+                profile_photo_by_user_id[user_id] = photo_url
+
+    artisans = []
+    for artisan in raw_artisans:
+        artisan_id = str(artisan["_id"])
+        if artisan.get("status") in ("suspended", "blocked"):
+            continue
+        credit_doc = await db_module.db.artisan_credits.find_one(
+            {"artisan_id": artisan_id},
+            {"is_blocked": 1, "commission_due": 1},
+        )
+        if credit_doc:
+            commission_due = float(credit_doc.get("commission_due", 0) or 0)
+            if bool(credit_doc.get("is_blocked")) or commission_due >= 10000:
+                continue
+        if not artisan.get("photo") and profile_photo_by_user_id.get(artisan_id):
+            artisan["photo"] = profile_photo_by_user_id[artisan_id]
+        artisan["_id"] = artisan_id
         artisans.append(User(**artisan))
 
     return artisans
@@ -190,16 +258,40 @@ async def update_user(
     current_user: dict = Depends(get_current_user)
 ):
     """Update user profile"""
+    if not isinstance(user_data, dict):
+        raise HTTPException(status_code=400, detail="Invalid payload format")
+
     user = await db_module.db.users.find_one({"email": current_user["email"]})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     if str(user["_id"]) != user_id:
         raise HTTPException(status_code=403, detail="Cannot update other users")
 
+    try:
+        user_object_id = ObjectId(user_id)
+    except InvalidId as exc:
+        raise HTTPException(status_code=400, detail="Invalid user id") from exc
+
+    safe_updates = {k: v for k, v in user_data.items() if k in USER_UPDATE_ALLOWED_FIELDS}
+    if "specialties" in safe_updates and not isinstance(safe_updates["specialties"], list):
+        raise HTTPException(status_code=400, detail="specialties must be a list")
+    if "specialties" in safe_updates:
+        safe_updates["specialties"] = [str(s).strip() for s in safe_updates["specialties"] if str(s).strip()]
+
+    if not safe_updates:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No updatable fields provided. Allowed fields: {sorted(USER_UPDATE_ALLOWED_FIELDS)}",
+        )
+
+    safe_updates["updated_at"] = datetime.utcnow()
+
     await db_module.db.users.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": user_data}
+        {"_id": user_object_id},
+        {"$set": safe_updates}
     )
 
-    updated_user = await db_module.db.users.find_one({"_id": ObjectId(user_id)})
+    updated_user = await db_module.db.users.find_one({"_id": user_object_id})
     updated_user["_id"] = str(updated_user["_id"])
     return User(**updated_user)
 
@@ -219,7 +311,7 @@ async def get_available_requests(
     if user["role"] != "artisan":
         raise HTTPException(status_code=403, detail="Only artisans can view available requests")
 
-    query = {"status": {"$in": ["pending", "published"]}}
+    query = {"status": "demande_envoyee", "assigned_artisan_id": {"$in": [None, ""]}}
 
     if lat and lng:
         query["location"] = {
@@ -229,8 +321,17 @@ async def get_available_requests(
             }
         }
 
-    if user.get("specialties"):
-        query["service_type"] = {"$in": user["specialties"]}
+    profile = await db_module.db.artisan_profiles.find_one(
+        {"user_id": str(user["_id"])},
+        {"domaines_specialite": 1, "specialites": 1},
+    )
+    domains = []
+    if profile:
+        domains = profile.get("domaines_specialite") or profile.get("specialites") or []
+    if not domains:
+        domains = user.get("specialty_domains") or user.get("specialties") or []
+    if domains:
+        query["service_type"] = {"$in": [str(d).strip().lower() for d in domains if str(d).strip()]}
 
     requests = []
     async for req in db_module.db.service_requests.find(query).limit(20):
@@ -249,7 +350,7 @@ async def create_booking(
     """Create a new booking/reservation"""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
 
-    booking_dict = booking_data.dict()
+    booking_dict = booking_data.model_dump()
     booking_dict["client_id"] = str(user["_id"])
     booking_dict["client_name"] = user.get("name", "Client")
     booking_dict["status"] = "pending_artisan"
@@ -339,8 +440,33 @@ async def create_rating(
     rating_data: RatingCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    """Create a rating for an artisan"""
+    """Create a rating for an artisan after mission final validation."""
     user = await db_module.db.users.find_one({"email": current_user["email"]})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if rating_data.rating < 1 or rating_data.rating > 5:
+        raise HTTPException(status_code=400, detail="rating must be between 1 and 5")
+
+    # Must be a validated mission, rated by the mission client, for the assigned artisan.
+    req = await db_module.db.service_requests.find_one({"_id": ObjectId(rating_data.request_id)})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if req.get("status") != "validee_client":
+        raise HTTPException(status_code=400, detail="La mission doit etre validee avant notation")
+    if str(user["_id"]) != req.get("client_id"):
+        raise HTTPException(status_code=403, detail="Seul le client de cette mission peut noter")
+
+    assigned_artisan_id = req.get("assigned_artisan_id") or req.get("artisan_id")
+    if assigned_artisan_id != rating_data.artisan_id:
+        raise HTTPException(status_code=400, detail="artisan_id mismatch for this mission")
+
+    # One rating per mission/client pair.
+    existing = await db_module.db.ratings.find_one(
+        {"request_id": rating_data.request_id, "client_id": str(user["_id"])}
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Cette mission a deja ete notee")
 
     rating_dict = rating_data.dict()
     rating_dict["client_id"] = str(user["_id"])
@@ -358,7 +484,11 @@ async def create_rating(
         avg_rating = sum(artisan_ratings) / len(artisan_ratings)
         await db_module.db.users.update_one(
             {"_id": ObjectId(rating_data.artisan_id)},
-            {"$set": {"average_rating": avg_rating, "total_missions": len(artisan_ratings)}}
+            {"$set": {"average_rating": avg_rating}}
+        )
+        await db_module.db.artisan_profiles.update_one(
+            {"user_id": rating_data.artisan_id},
+            {"$set": {"note_moyenne": avg_rating}},
         )
 
     return Rating(**rating_dict)
@@ -492,7 +622,46 @@ async def get_credit_status(current_user: dict = Depends(get_current_user)):
     user = await db_module.db.users.find_one({"email": current_user["email"]})
     if user["role"] != "artisan":
         raise HTTPException(status_code=403, detail="Only artisans have credit accounts")
-    status = await credit_system.get_credit_status(str(user["_id"]))
+
+    artisan_id = str(user["_id"])
+
+    # Safety net: apply any pending wallet updates for missions stuck in
+    # "terminee" without financials.  This catches edge cases where the
+    # state-machine committed the status but the wallet update failed.
+    try:
+        pending = db_module.db.service_requests.find(
+            {
+                "assigned_artisan_id": artisan_id,
+                "status": {"$in": ["terminee", "validee_client"]},
+                "$or": [
+                    {"financials_applied_at": {"$exists": False}},
+                    {"financials_applied_at": None},
+                ],
+            }
+        ).limit(5)
+        async for mission in pending:
+            mission_id = str(mission["_id"])
+            logging.getLogger(__name__).warning(
+                "CREDIT_STATUS_SAFETY_NET applying pending financials mission=%s artisan=%s",
+                mission_id,
+                artisan_id,
+            )
+            try:
+                from wallet_service import apply_mission_completion
+                await apply_mission_completion(mission_id)
+                logging.getLogger(__name__).info(
+                    "CREDIT_STATUS_SAFETY_NET success mission=%s", mission_id,
+                )
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "CREDIT_STATUS_SAFETY_NET failed mission=%s", mission_id,
+                )
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "CREDIT_STATUS_SAFETY_NET scan error artisan=%s", artisan_id,
+        )
+
+    status = await credit_system.get_credit_status(artisan_id)
     return status
 
 @api_router.get("/credit/can-accept")

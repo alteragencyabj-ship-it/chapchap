@@ -363,6 +363,7 @@ class PaymentService:
                 intent["artisan_id"],
                 intent.get("request_id") or payment_intent_id,
                 float(intent.get("amount", 0)),
+                client_id=intent.get("client_id"),
             )
             await self._log_event(str(intent["_id"]), "credit_consumed", credit_result)
         except Exception as exc:  # pragma: no cover - defensive logging

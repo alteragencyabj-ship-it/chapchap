@@ -118,12 +118,18 @@ def test_smoke_e2e_flow() -> None:
             req = r.json()
             request_id = _pick(req, "_id", "id")
             assert request_id
-            assert req.get("status") == "published"
+            assert req.get("status") == "demande_envoyee"
 
             # 4) Accept -> conversation auto
             r = c.post(f"/api/requests/{request_id}/accept", headers=_auth(artisan_token))
             assert r.status_code == 200, (r.status_code, r.text)
-            assert r.json().get("status") == "accepted"
+            assert r.json().get("status") == "acceptee"
+
+            # 4b) Artisan phone must be hidden before "en route"
+            r = c.get(f"/api/requests/{request_id}/contact", headers=_auth(client_token))
+            assert r.status_code == 200, (r.status_code, r.text)
+            assert r.json().get("artisan_phone_visible") is False
+            assert r.json().get("artisan_phone") is None
 
             # 5) Get conversations + find the one linked to request
             r = c.get("/api/conversations", headers=_auth(client_token))
@@ -142,18 +148,32 @@ def test_smoke_e2e_flow() -> None:
             )
             assert r.status_code == 200, (r.status_code, r.text)
 
-            # 7) Start -> Complete -> Confirm
-            r = c.post(f"/api/requests/{request_id}/start", headers=_auth(artisan_token))
+            # 7) En route -> Mission in progress -> Complete -> Confirm
+            r = c.post(f"/api/requests/{request_id}/en-route", headers=_auth(artisan_token))
             assert r.status_code == 200, (r.status_code, r.text)
-            assert r.json().get("status") == "in_progress"
+            assert r.json().get("status") == "artisan_en_route"
+
+            # Phone becomes visible only after en route
+            r = c.get(f"/api/requests/{request_id}/contact", headers=_auth(client_token))
+            assert r.status_code == 200, (r.status_code, r.text)
+            assert r.json().get("artisan_phone_visible") is True
+            assert r.json().get("artisan_phone")
+
+            r = c.post(f"/api/requests/{request_id}/arrive", headers=_auth(artisan_token))
+            assert r.status_code == 200, (r.status_code, r.text)
+            assert r.json().get("status") == "mission_en_cours"
 
             r = c.post(f"/api/requests/{request_id}/complete", headers=_auth(artisan_token))
             assert r.status_code == 200, (r.status_code, r.text)
-            assert r.json().get("status") == "completed"
+            assert r.json().get("status") == "terminee"
 
-            r = c.post(f"/api/requests/{request_id}/confirm", headers=_auth(client_token))
+            r = c.post(
+                f"/api/requests/{request_id}/confirm",
+                headers=_auth(client_token),
+                json={"warning_ack": True},
+            )
             assert r.status_code == 200, (r.status_code, r.text)
-            assert r.json().get("status") == "confirmed"
+            assert r.json().get("status") == "validee_client"
 
             # 8) Notifications endpoints reachable
             r = c.get("/api/notifications", headers=_auth(client_token))

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,23 +10,31 @@ import {
   StatusBar,
   Image,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import api from '../src/services/api';
-import { COLORS } from '../src/config/constants';
+import { COLORS, SHADOWS, SPACING, RADII, TYPOGRAPHY } from '../src/config/constants';
 
 interface Artisan {
-  _id: string;
-  name: string;
-  specialties: string[];
-  average_rating: number;
-  total_missions: number;
-  taux_reponse?: number;
-  delai_moyen_reponse?: string;
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  metier_principal?: string;
+  photo?: string;
+  photo_url?: string;
+  avatar_url?: string;
+  specialites: string[];
+  note_moyenne: number;
+  missions_completees: number;
+  annees_experience?: number;
+  score_profil: number;
+  affiliated_clients_count: number;
+  ranking_score: number;
   quartier?: string;
-  city?: string;
-  statut?: string;
-  distance?: number;
+  ville?: string;
+  distance_km?: number;
+  badges?: string[];
   is_verified?: boolean;
 }
 
@@ -37,135 +45,255 @@ export default function SelectArtisan() {
   const [artisans, setArtisans] = useState<Artisan[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'recommended' | 'nearest' | 'fastest'>('recommended');
+  const [imageLoadErrors, setImageLoadErrors] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    fetchArtisans();
+  const serviceNameLabel = typeof serviceName === 'string' ? serviceName : '';
+  const servicePriceLabel = typeof servicePrice === 'string' ? servicePrice : '';
+
+  const getArtisanPhotoUri = useCallback((item: Artisan): string | null => {
+    const raw = (item.photo || item.photo_url || item.avatar_url || '').trim();
+    if (!raw) return null;
+
+    if (
+      raw.startsWith('http://')
+      || raw.startsWith('https://')
+      || raw.startsWith('data:image/')
+    ) {
+      return raw;
+    }
+
+    const compact = raw.replace(/\s+/g, '');
+    const isLikelyBase64 = compact.length > 100 && /^[A-Za-z0-9+/=]+$/.test(compact);
+    if (isLikelyBase64) {
+      return `data:image/jpeg;base64,${compact}`;
+    }
+
+    return null;
   }, []);
 
-  const fetchArtisans = async () => {
+  const markPhotoError = useCallback((artisanId: string) => {
+    setImageLoadErrors((prev) => ({ ...prev, [artisanId]: true }));
+  }, []);
+
+  const fetchArtisans = useCallback(async () => {
     try {
-      const response = await api.get('/artisans', {
+      const serviceType = typeof categoryId === 'string' && categoryId
+        ? categoryId
+        : serviceNameLabel || undefined;
+
+      const response = await api.get('/artisans/search', {
         params: {
-          specialty: categoryId,
+          service_type: serviceType,
           verified_only: false,
-        }
+          limit: 50,
+          page: 1,
+        },
       });
 
-      const data = response.data || [];
-      // Basic sort initially
-      setArtisans(data);
+      const data = Array.isArray(response.data) ? response.data : [];
+      const normalized: Artisan[] = data
+        .map((raw: any) => {
+          const badges = Array.isArray(raw?.badges)
+            ? raw.badges.map((b: any) => String(b))
+            : [];
+
+          return {
+            user_id: String(raw?.user_id || raw?._id || ''),
+            first_name: String(raw?.first_name || ''),
+            last_name: String(raw?.last_name || ''),
+            metier_principal: raw?.metier_principal ? String(raw.metier_principal) : '',
+            photo: raw?.photo ? String(raw.photo) : undefined,
+            photo_url: raw?.photo_url ? String(raw.photo_url) : undefined,
+            avatar_url: raw?.avatar_url ? String(raw.avatar_url) : undefined,
+            specialites: Array.isArray(raw?.specialites)
+              ? raw.specialites.map((s: any) => String(s))
+              : [],
+            note_moyenne: Number(raw?.note_moyenne || 0),
+            missions_completees: Number(raw?.missions_completees || 0),
+            annees_experience: raw?.annees_experience != null
+              ? Number(raw.annees_experience)
+              : undefined,
+            score_profil: Number(raw?.score_profil || 0),
+            affiliated_clients_count: Number(raw?.affiliated_clients_count || 0),
+            ranking_score: Number(raw?.ranking_score || 0),
+            quartier: raw?.quartier ? String(raw.quartier) : undefined,
+            ville: raw?.ville ? String(raw.ville) : undefined,
+            distance_km: raw?.distance_km != null ? Number(raw.distance_km) : undefined,
+            badges,
+            is_verified: badges.some((badge: string) => badge.toLowerCase() === 'verifie'),
+          };
+        })
+        .filter((item) => Boolean(item.user_id));
+
+      setArtisans(normalized);
     } catch (error) {
       console.error('Failed to fetch artisans:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [categoryId, serviceNameLabel]);
+
+  useEffect(() => {
+    fetchArtisans();
+  }, [fetchArtisans]);
 
   const getSortedArtisans = () => {
-    let sorted = [...artisans];
-    if (filter === 'nearest') {
-      // Mock sort as distance might be missing
-      sorted.sort((a, b) => (a.distance || 0) - (b.distance || 0));
-    } else if (filter === 'fastest') {
-      sorted.sort((a, b) => (b.taux_reponse || 0) - (a.taux_reponse || 0));
-    } else {
-      // Recommended: Rating + Missions
-      sorted.sort((a, b) => b.average_rating - a.average_rating || b.total_missions - a.total_missions);
+    if (filter === 'recommended') {
+      return artisans;
     }
+
+    const sorted = [...artisans];
+    if (filter === 'nearest') {
+      sorted.sort(
+        (a, b) => (a.distance_km ?? Number.MAX_SAFE_INTEGER) - (b.distance_km ?? Number.MAX_SAFE_INTEGER)
+      );
+      return sorted;
+    }
+
+    sorted.sort(
+      (a, b) =>
+        (b.annees_experience || 0) - (a.annees_experience || 0)
+        || b.score_profil - a.score_profil
+    );
     return sorted;
   };
 
-  const renderArtisan = ({ item }: { item: Artisan }) => (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={() => router.push({
-        pathname: '/checkout',
-        params: {
-          artisanId: item._id,
-          artisanName: item.name,
-          serviceId,
-          serviceName,
-          servicePrice,
-          categoryId,
+  const renderArtisan = ({ item }: { item: Artisan }) => {
+    const photoUri = getArtisanPhotoUri(item);
+    const showPhoto = Boolean(photoUri) && !imageLoadErrors[item.user_id];
+    const fullName = `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Artisan';
+    const initial = fullName.charAt(0).toUpperCase();
+    const locationLabel = item.quartier || item.ville || 'Abidjan';
+    const tradeLabel = serviceNameLabel || item.metier_principal || 'Artisan';
+
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() =>
+          router.push({
+            pathname: '/artisan-profile',
+            params: {
+              id: item.user_id,
+              serviceId,
+              serviceName,
+              servicePrice,
+              categoryId,
+            },
+          })
         }
-      })}
-      activeOpacity={0.9}
-    >
-      <View style={styles.cardHeader}>
-        <View style={styles.avatarContainer}>
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarInitial}>{item.name.charAt(0)}</Text>
-          </View>
-          {item.is_verified && (
-            <View style={styles.verifiedBadge}>
-              <Ionicons name="checkmark-circle" size={16} color={COLORS.blue} />
-            </View>
-          )}
-        </View>
-
-        <View style={styles.cardInfo}>
-          <View style={styles.nameRow}>
-            <Text style={styles.name}>{item.name}</Text>
-            <View style={[styles.statusPill, item.statut === 'disponible' ? styles.statusAvailable : styles.statusBusy]}>
-              <View style={[styles.statusDot, { backgroundColor: item.statut === 'disponible' ? COLORS.success : COLORS.textLight }]} />
-              <Text style={styles.statusText}>{item.statut === 'disponible' ? 'Dispo' : 'Occupé'}</Text>
-            </View>
+        activeOpacity={0.9}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.avatarContainer}>
+            {showPhoto ? (
+              <Image
+                source={{ uri: photoUri! }}
+                style={styles.avatarImage}
+                onError={() => markPhotoError(item.user_id)}
+              />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarInitial}>{initial}</Text>
+              </View>
+            )}
+            {item.is_verified && (
+              <View style={styles.verifiedBadge}>
+                <Ionicons name="checkmark-circle" size={16} color={COLORS.info} />
+              </View>
+            )}
           </View>
 
-          <Text style={styles.specialties}>{serviceName} • {item.quartier || 'Abidjan'}</Text>
-
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Ionicons name="star" size={14} color={COLORS.warning} />
-              <Text style={styles.statValue}>{item.average_rating?.toFixed(1)}</Text>
-              <Text style={styles.statLabel}>({item.total_missions})</Text>
+          <View style={styles.cardInfo}>
+            <View style={styles.nameRow}>
+              <Text style={styles.name} numberOfLines={1}>{fullName}</Text>
+              <View style={styles.affiliationPill}>
+                <Ionicons name="people-outline" size={12} color={COLORS.text} />
+                <Text style={styles.affiliationText}>{item.affiliated_clients_count} affilies</Text>
+              </View>
             </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Ionicons name="time-outline" size={14} color={COLORS.textLight} />
-              <Text style={styles.statValue}>15 min</Text>
-              <Text style={styles.statLabel}>délai</Text>
+
+            <Text style={styles.specialties} numberOfLines={1}>{tradeLabel} - {locationLabel}</Text>
+
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <Ionicons name="star" size={14} color={COLORS.warning} />
+                <Text style={styles.statValue}>{item.note_moyenne.toFixed(1)}</Text>
+                <Text style={styles.statLabel}>({item.missions_completees})</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Ionicons name="briefcase-outline" size={14} color={COLORS.textLight} />
+                <Text style={styles.statValue}>{item.annees_experience || 0}</Text>
+                <Text style={styles.statLabel}>ans</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Ionicons name="shield-checkmark-outline" size={14} color={COLORS.textLight} />
+                <Text style={styles.statValue}>{Math.round(item.score_profil)}%</Text>
+                <Text style={styles.statLabel}>profil</Text>
+              </View>
             </View>
           </View>
         </View>
-      </View>
 
-      <View style={styles.cardFooter}>
-        <View style={styles.priceTag}>
-          <Text style={styles.priceLabel}>A partir de</Text>
-          <Text style={styles.priceAmount}>{servicePrice} F</Text>
+        <View style={styles.cardFooter}>
+          <View style={styles.priceTag}>
+            <Text style={styles.priceLabel}>A partir de</Text>
+            <Text style={styles.priceAmount}>{servicePriceLabel} FCFA</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.selectButton}
+            activeOpacity={0.8}
+            onPress={() =>
+              router.push({
+                pathname: '/artisan-profile',
+                params: {
+                  id: item.user_id,
+                  serviceId,
+                  serviceName,
+                  servicePrice,
+                  categoryId,
+                },
+              })
+            }
+          >
+            <Text style={styles.selectButtonText}>Choisir</Text>
+            <Ionicons name="arrow-forward" size={16} color={COLORS.white} />
+          </TouchableOpacity>
         </View>
-        <View style={styles.selectButton}>
-          <Text style={styles.selectButtonText}>Choisir</Text>
-          <Ionicons name="arrow-forward" size={16} color={COLORS.white} />
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.light} />
 
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.7}>
           <Ionicons name="arrow-back" size={24} color={COLORS.dark} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Choisissez votre expert</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerSpacer} />
       </View>
 
-      {/* Filters */}
       <View style={styles.filterContainer}>
-        {['recommended', 'nearest', 'fastest'].map((f) => (
+        {(['recommended', 'nearest', 'fastest'] as const).map((currentFilter) => (
           <TouchableOpacity
-            key={f}
-            style={[styles.filterChip, filter === f && styles.filterChipActive]}
-            onPress={() => setFilter(f as any)}
+            key={currentFilter}
+            style={[styles.filterChip, filter === currentFilter && styles.filterChipActive]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setFilter(currentFilter);
+            }}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-              {f === 'recommended' ? 'Recommandés' : f === 'nearest' ? 'Plus proches' : 'Plus rapides'}
+            <Text style={[styles.filterText, filter === currentFilter && styles.filterTextActive]}>
+              {currentFilter === 'recommended'
+                ? 'Recommandes'
+                : currentFilter === 'nearest'
+                  ? 'Plus proches'
+                  : 'Plus solides'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -179,7 +307,7 @@ export default function SelectArtisan() {
         <FlatList
           data={getSortedArtisans()}
           renderItem={renderArtisan}
-          keyExtractor={(item) => item._id}
+          keyExtractor={(item) => item.user_id}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
@@ -187,8 +315,10 @@ export default function SelectArtisan() {
               <View style={styles.emptyIcon}>
                 <Ionicons name="search-outline" size={40} color={COLORS.textLight} />
               </View>
-              <Text style={styles.emptyTitle}>Aucun artisan trouvé</Text>
-              <Text style={styles.emptyText}>Essayez une autre catégorie ou revenez plus tard.</Text>
+              <Text style={styles.emptyTitle}>Aucun artisan disponible</Text>
+              <Text style={styles.emptyText}>
+                Aucun artisan ne correspond a cette recherche pour le moment.
+              </Text>
             </View>
           }
         />
@@ -206,49 +336,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 20,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.light,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    ...SHADOWS.sm,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.dark,
+    ...TYPOGRAPHY.h3,
+  },
+  headerSpacer: {
+    width: 44,
   },
   filterContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    marginBottom: 20,
-    gap: 12,
+    paddingHorizontal: SPACING.xl,
+    marginBottom: SPACING.xl,
+    gap: SPACING.md,
   },
   filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADII.pill,
     backgroundColor: COLORS.white,
     borderWidth: 1,
     borderColor: COLORS.border,
+    minHeight: 36,
+    justifyContent: 'center',
   },
   filterChipActive: {
     backgroundColor: COLORS.dark,
     borderColor: COLORS.dark,
   },
   filterText: {
-    fontSize: 13,
-    fontWeight: '600',
+    ...TYPOGRAPHY.label,
     color: COLORS.textLight,
   },
   filterTextActive: {
@@ -260,34 +388,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   listContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: SPACING.xl,
     paddingBottom: 40,
   },
   card: {
     backgroundColor: COLORS.white,
-    borderRadius: 24,
-    marginBottom: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
+    borderRadius: RADII.xl,
+    marginBottom: SPACING.lg,
+    padding: SPACING.lg,
+    ...SHADOWS.md,
   },
   cardHeader: {
     flexDirection: 'row',
-    marginBottom: 16,
+    marginBottom: SPACING.lg,
   },
   avatarContainer: {
-    marginRight: 16,
+    marginRight: SPACING.lg,
   },
   avatarPlaceholder: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: COLORS.light,
+    backgroundColor: COLORS.neutral100,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  avatarImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.neutral100,
   },
   avatarInitial: {
     fontSize: 24,
@@ -308,7 +438,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: SPACING.xs,
+    gap: SPACING.sm,
   },
   name: {
     fontSize: 16,
@@ -316,34 +447,27 @@ const styles = StyleSheet.create({
     color: COLORS.dark,
     flex: 1,
   },
-  statusPill: {
+  affiliationPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.neutral50,
+    borderRadius: RADII.pill,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    gap: SPACING.xs,
   },
-  statusAvailable: {
-    backgroundColor: COLORS.success + '15',
-  },
-  statusBusy: {
-    backgroundColor: COLORS.textLight + '15',
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
-  },
-  statusText: {
-    fontSize: 11,
+  affiliationText: {
+    fontSize: 10,
     fontWeight: '600',
-    color: COLORS.dark,
+    color: COLORS.text,
   },
   specialties: {
-    fontSize: 13,
+    ...TYPOGRAPHY.label,
     color: COLORS.textLight,
-    marginBottom: 8,
+    fontWeight: '400',
+    marginBottom: SPACING.sm,
   },
   statsRow: {
     flexDirection: 'row',
@@ -352,16 +476,15 @@ const styles = StyleSheet.create({
   statItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: SPACING.xs,
   },
   statValue: {
-    fontSize: 13,
-    fontWeight: '700',
+    ...TYPOGRAPHY.label,
     color: COLORS.dark,
+    fontWeight: '700',
   },
   statLabel: {
-    fontSize: 13,
-    color: COLORS.textLight,
+    ...TYPOGRAPHY.caption,
     marginLeft: 2,
   },
   statDivider: {
@@ -369,19 +492,17 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: COLORS.border,
-    marginHorizontal: 8,
+    marginHorizontal: SPACING.sm,
   },
   cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 16,
+    paddingTop: SPACING.lg,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
-  priceTag: {
-
-  },
+  priceTag: {},
   priceLabel: {
     fontSize: 11,
     color: COLORS.textLight,
@@ -395,11 +516,12 @@ const styles = StyleSheet.create({
   selectButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.dark, // Premium Black Button
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    gap: 8,
+    backgroundColor: COLORS.dark,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: RADII.pill,
+    gap: SPACING.sm,
+    minHeight: 44,
   },
   selectButtonText: {
     color: COLORS.white,
@@ -414,21 +536,19 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: COLORS.light,
+    backgroundColor: COLORS.neutral100,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: SPACING.lg,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.dark,
-    marginBottom: 8,
+    ...TYPOGRAPHY.h3,
+    marginBottom: SPACING.sm,
   },
   emptyText: {
-    fontSize: 14,
+    ...TYPOGRAPHY.body,
     color: COLORS.textLight,
     textAlign: 'center',
-    maxWidth: 240,
+    maxWidth: 260,
   },
 });

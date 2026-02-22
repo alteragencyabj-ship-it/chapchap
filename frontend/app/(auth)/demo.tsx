@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,14 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../../src/store/authStore';
 import api from '../../src/services/api';
-import { COLORS, API_BASE_URL } from '../../src/config/constants';
+import { COLORS, RADII, SHADOWS, API_BASE_URL } from '../../src/config/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function Demo() {
@@ -23,7 +25,9 @@ export default function Demo() {
   const [selectedRole, setSelectedRole] = useState<'client' | 'artisan' | null>(null);
 
   const handleDemoLogin = async (role: 'client' | 'artisan') => {
-    console.log('🔵 Demo login started for role:', role);
+    if (loading) return;
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
     setSelectedRole(role);
 
@@ -32,23 +36,18 @@ export default function Demo() {
         ? 'demo.client@artisan.app'
         : 'demo.artisan@artisan.app';
 
-      console.log('🔵 Attempting login with email:', email);
-      console.log('🔵 API Base URL:', API_BASE_URL);
-      console.log('🔵 Full URL:', API_BASE_URL + '/api/auth/login');
-
       const response = await api.post('/auth/login', {
         email,
         password: 'demo123',
       });
 
-      console.log('✅ Login successful:', response.data.user.name);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       const { access_token, user } = response.data;
       await setToken(access_token);
       await AsyncStorage.setItem('user_data', JSON.stringify(user));
       setUser(user);
 
-      console.log('✅ Redirecting to tabs...');
       // Small delay to let zustand propagate state before navigation
       setTimeout(() => {
         if (user.role === 'artisan') {
@@ -58,37 +57,33 @@ export default function Demo() {
         }
       }, 100);
     } catch (error: any) {
-      console.error('❌ Demo login error:', error);
-      console.error('❌ Error message:', error.message);
-      console.error('❌ Error code:', error.code);
-      console.error('❌ Error response:', error.response);
-      console.error('❌ Error config:', error.config);
-
-      let errorMessage = 'Erreur de connexion';
-      if (error.message) {
-        errorMessage += ': ' + error.message;
-      }
-      if (error.code) {
-        errorMessage += ' (' + error.code + ')';
+      if (__DEV__) {
+        console.error('Demo login error', {
+          message: error?.message,
+          code: error?.code,
+          status: error?.response?.status,
+          url: error?.config?.url,
+        });
       }
 
-      Alert.alert(
-        'Erreur de connexion',
-        errorMessage,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              setLoading(false);
-              setSelectedRole(null);
-            }
-          }
-        ]
-      );
-      return;
-    } finally {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+
+      let errorMessage: string;
+      const status = error?.response?.status;
+      if (status === 401 || status === 403) {
+        errorMessage = 'Les comptes demo ne sont pas configures sur le serveur. Contactez le support.';
+      } else if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Le serveur met trop de temps a repondre. Reessayez.';
+      } else if (!error.response) {
+        errorMessage = 'Impossible de joindre le serveur. Verifiez votre connexion internet.';
+      } else {
+        errorMessage = error.response?.data?.detail || 'Une erreur inattendue est survenue. Reessayez.';
+      }
+
       setLoading(false);
       setSelectedRole(null);
+      Alert.alert('Connexion demo impossible', errorMessage);
+      return;
     }
   };
 
@@ -100,15 +95,19 @@ export default function Demo() {
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
+          disabled={loading}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="arrow-back" size={24} color={COLORS.white} />
+          <Ionicons name="arrow-back" size={24} color={loading ? 'transparent' : COLORS.white} />
         </TouchableOpacity>
 
         <View style={styles.header}>
-          <Ionicons name="flash" size={60} color={COLORS.iconSand} />
-          <Text style={styles.title}>Découvrez ARTISAN</Text>
+          <View style={styles.flashIconContainer}>
+            <Ionicons name="flash" size={48} color={COLORS.iconSand} />
+          </View>
+          <Text style={styles.title}>Decouvrez ARTISAN</Text>
           <Text style={styles.subtitle}>
-            Testez l'app avec un compte démo
+            Testez l'app avec un compte demo
           </Text>
           {__DEV__ && (
             <Text style={styles.debugText}>API: {API_BASE_URL}</Text>
@@ -116,18 +115,20 @@ export default function Demo() {
         </View>
 
         <View style={styles.optionsContainer}>
-          <Text style={styles.optionsTitle}>Choisissez votre rôle :</Text>
+          <Text style={styles.optionsTitle}>Choisissez votre role :</Text>
 
           <TouchableOpacity
             style={[
               styles.roleCard,
               loading && selectedRole === 'client' && styles.roleCardLoading,
+              loading && selectedRole !== 'client' && styles.roleCardDisabled,
             ]}
             onPress={() => handleDemoLogin('client')}
             disabled={loading}
+            activeOpacity={0.8}
           >
-            <View style={styles.roleIcon}>
-              <Ionicons name="person" size={40} color={COLORS.iconSteel} />
+            <View style={[styles.roleIcon, styles.roleIconClient]}>
+              <Ionicons name="person" size={28} color={COLORS.iconSteel} />
             </View>
             <View style={styles.roleInfo}>
               <Text style={styles.roleTitle}>Client</Text>
@@ -136,9 +137,9 @@ export default function Demo() {
               </Text>
             </View>
             {loading && selectedRole === 'client' ? (
-              <ActivityIndicator color={COLORS.primary} />
+              <ActivityIndicator color={COLORS.primary} size="small" />
             ) : (
-              <Ionicons name="chevron-forward" size={24} color={COLORS.textLight} />
+              <Ionicons name="chevron-forward" size={20} color={COLORS.neutral400} />
             )}
           </TouchableOpacity>
 
@@ -146,23 +147,25 @@ export default function Demo() {
             style={[
               styles.roleCard,
               loading && selectedRole === 'artisan' && styles.roleCardLoading,
+              loading && selectedRole !== 'artisan' && styles.roleCardDisabled,
             ]}
             onPress={() => handleDemoLogin('artisan')}
             disabled={loading}
+            activeOpacity={0.8}
           >
-            <View style={styles.roleIcon}>
-              <Ionicons name="construct" size={40} color={COLORS.iconSage} />
+            <View style={[styles.roleIcon, styles.roleIconArtisan]}>
+              <Ionicons name="construct" size={28} color={COLORS.iconSage} />
             </View>
             <View style={styles.roleInfo}>
               <Text style={styles.roleTitle}>Artisan</Text>
               <Text style={styles.roleDescription}>
-                Recevez des missions à proximité
+                Recevez des missions a proximite
               </Text>
             </View>
             {loading && selectedRole === 'artisan' ? (
-              <ActivityIndicator color={COLORS.primary} />
+              <ActivityIndicator color={COLORS.primary} size="small" />
             ) : (
-              <Ionicons name="chevron-forward" size={24} color={COLORS.textLight} />
+              <Ionicons name="chevron-forward" size={20} color={COLORS.neutral400} />
             )}
           </TouchableOpacity>
         </View>
@@ -171,7 +174,7 @@ export default function Demo() {
           <View style={styles.infoCard}>
             <Ionicons name="information-circle" size={20} color={COLORS.iconIce} />
             <Text style={styles.infoText}>
-              Comptes de démo pré-configurés pour tester l'app
+              Comptes de demo pre-configures pour tester l'app
             </Text>
           </View>
         </View>
@@ -187,39 +190,54 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'android' ? 32 : 24,
   },
   backButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
+    borderRadius: RADII.sm,
     justifyContent: 'center',
-    marginBottom: 20,
+    alignItems: 'flex-start',
+    marginBottom: 16,
   },
   header: {
     alignItems: 'center',
     marginBottom: 40,
   },
+  flashIconContainer: {
+    width: 88,
+    height: 88,
+    borderRadius: RADII.xl + 4,
+    backgroundColor: `${COLORS.iconSand}20`,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: COLORS.white,
     marginTop: 20,
     marginBottom: 8,
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 16,
     color: COLORS.white,
     textAlign: 'center',
-    opacity: 0.9,
+    opacity: 0.85,
     marginHorizontal: 20,
-    lineHeight: 22,
+    lineHeight: 24,
+    fontWeight: '500',
   },
   debugText: {
     fontSize: 10,
     color: COLORS.white,
     textAlign: 'center',
-    opacity: 0.7,
+    opacity: 0.5,
     marginTop: 8,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   optionsContainer: {
     flex: 1,
@@ -229,33 +247,44 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.white,
     marginBottom: 20,
+    opacity: 0.9,
   },
   roleCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.white,
-    borderRadius: 16,
+    borderRadius: RADII.xl,
     padding: 20,
     marginBottom: 16,
     gap: 16,
+    minHeight: 88,
+    ...SHADOWS.md,
   },
   roleCardLoading: {
-    opacity: 0.7,
+    opacity: 0.85,
+  },
+  roleCardDisabled: {
+    opacity: 0.5,
   },
   roleIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: COLORS.light,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  roleIconClient: {
+    backgroundColor: `${COLORS.iconSteel}15`,
+  },
+  roleIconArtisan: {
+    backgroundColor: `${COLORS.iconSage}15`,
   },
   roleInfo: {
     flex: 1,
   },
   roleTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: COLORS.dark,
     marginBottom: 4,
   },
@@ -263,15 +292,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textLight,
     lineHeight: 20,
+    fontWeight: '400',
   },
   footer: {
-    marginTop: 20,
+    marginTop: 16,
+    paddingBottom: 8,
   },
   infoCard: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: `${COLORS.white}20`,
+    borderRadius: RADII.md,
     padding: 16,
     gap: 12,
   },
@@ -280,5 +311,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.white,
     lineHeight: 20,
+    opacity: 0.9,
+    fontWeight: '400',
   },
 });

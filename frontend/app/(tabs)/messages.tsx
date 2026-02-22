@@ -12,8 +12,10 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../src/config/constants';
+import { COLORS, SPACING, TYPOGRAPHY } from '../../src/config/constants';
 import api from '../../src/services/api';
+import { useSyncStore } from '../../src/store/syncStore';
+import { useAuthStore } from '../../src/store/authStore';
 
 interface Conversation {
   _id: string;
@@ -22,12 +24,15 @@ interface Conversation {
   last_message: string | null;
   last_message_at: string | null;
   unread_count: Record<string, number>;
-  // Enriched client-side
-  other_name?: string;
+  other_party_id?: string | null;
+  other_party_name?: string | null;
+  other_party_role?: string | null;
 }
 
 export default function Messages() {
   const router = useRouter();
+  const syncVersion = useSyncStore((s) => s.syncVersion);
+  const currentUserId = useAuthStore((s) => (s.user as any)?._id as string | undefined);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -46,7 +51,7 @@ export default function Messages() {
 
   useEffect(() => {
     fetchConversations();
-  }, [fetchConversations]);
+  }, [fetchConversations, syncVersion]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -67,35 +72,51 @@ export default function Messages() {
     return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   };
 
-  const renderItem = ({ item }: { item: Conversation }) => (
-    <TouchableOpacity
-      style={styles.conversationItem}
-      onPress={() =>
-        router.push({
-          pathname: '/chat',
-          params: { conversationId: item._id, requestId: item.request_id },
-        })
-      }
-      activeOpacity={0.7}
-    >
-      <View style={styles.avatar}>
-        <Ionicons name="person" size={24} color={COLORS.white} />
-      </View>
-      <View style={styles.conversationContent}>
-        <View style={styles.conversationHeader}>
-          <Text style={styles.conversationName} numberOfLines={1}>
-            Conversation
-          </Text>
-          <Text style={styles.conversationTime}>
-            {formatTime(item.last_message_at)}
-          </Text>
+  const renderItem = ({ item }: { item: Conversation }) => {
+    const unreadCount = currentUserId ? (item.unread_count?.[currentUserId] || 0) : 0;
+    const hasUnread = unreadCount > 0;
+
+    return (
+      <TouchableOpacity
+        style={styles.conversationItem}
+        onPress={() =>
+          router.push({
+            pathname: '/chat',
+            params: { conversationId: item._id, requestId: item.request_id },
+          })
+        }
+        activeOpacity={0.7}
+      >
+        <View style={styles.avatar}>
+          <Ionicons name="person" size={22} color={COLORS.white} />
         </View>
-        <Text style={styles.lastMessage} numberOfLines={1}>
-          {item.last_message || 'Nouvelle conversation'}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+        <View style={styles.conversationContent}>
+          <View style={styles.conversationHeader}>
+            <Text style={[styles.conversationName, hasUnread && styles.conversationNameUnread]} numberOfLines={1}>
+              {item.other_party_name || 'Conversation'}
+            </Text>
+            <View style={styles.rightMeta}>
+              <Text style={[styles.conversationTime, hasUnread && styles.conversationTimeUnread]}>
+                {formatTime(item.last_message_at)}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.lastMessageRow}>
+            <Text style={[styles.lastMessage, hasUnread && styles.lastMessageUnread]} numberOfLines={1}>
+              {item.last_message || 'Nouvelle conversation'}
+            </Text>
+            {hasUnread ? (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadBadgeText}>
+                  {unreadCount > 9 ? '9+' : String(unreadCount)}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
@@ -122,9 +143,9 @@ export default function Messages() {
       {conversations.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="chatbubbles-outline" size={80} color={COLORS.textLight} />
-          <Text style={styles.emptyText}>Aucune conversation</Text>
+          <Text style={styles.emptyText}>Pas encore de conversations</Text>
           <Text style={styles.emptySubtext}>
-            Vos conversations apparaitront ici quand un artisan acceptera votre demande
+            Faites votre premiere demande ! Vos echanges avec les artisans apparaitront ici.
           </Text>
         </View>
       ) : (
@@ -147,14 +168,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
   header: {
-    padding: 20,
-    borderBottomWidth: 1,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.dark,
+    ...TYPOGRAPHY.h1,
   },
   emptyContainer: {
     flex: 1,
@@ -163,22 +184,22 @@ const styles = StyleSheet.create({
     padding: 40,
   },
   emptyText: {
+    ...TYPOGRAPHY.h2,
     fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.dark,
-    marginTop: 16,
+    marginTop: SPACING.lg,
   },
   emptySubtext: {
-    fontSize: 14,
+    ...TYPOGRAPHY.body,
     color: COLORS.textLight,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: SPACING.sm,
   },
   conversationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
   },
   avatar: {
@@ -188,7 +209,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: SPACING.md,
   },
   conversationContent: {
     flex: 1,
@@ -196,20 +217,61 @@ const styles = StyleSheet.create({
   conversationHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    alignItems: 'center',
+    marginBottom: 3,
   },
   conversationName: {
     fontSize: 16,
     fontWeight: '600',
+    lineHeight: 20,
     color: COLORS.dark,
     flex: 1,
+    marginRight: SPACING.sm,
+  },
+  conversationNameUnread: {
+    fontWeight: '700',
   },
   conversationTime: {
-    fontSize: 12,
-    color: COLORS.textLight,
+    ...TYPOGRAPHY.caption,
+  },
+  conversationTimeUnread: {
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  rightMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  lastMessageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   lastMessage: {
+    ...TYPOGRAPHY.body,
     fontSize: 14,
+    lineHeight: 18,
     color: COLORS.textLight,
+    flex: 1,
+    marginRight: SPACING.sm,
+  },
+  lastMessageUnread: {
+    color: COLORS.dark,
+    fontWeight: '500',
+  },
+  unreadBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.error,
+    paddingHorizontal: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  unreadBadgeText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 14,
   },
 });

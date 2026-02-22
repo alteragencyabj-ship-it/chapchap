@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/admin/finance", tags=["admin-finance"])
 
 @router.get("/dashboard")
 async def finance_dashboard(
-    period: str = Query("month", regex="^(week|month|quarter|year)$"),
+    period: str = Query("month", pattern="^(week|month|quarter|year)$"),
     admin: dict = Depends(require_permission("finance.read")),
 ):
     """Get financial overview: revenue, commissions, balances."""

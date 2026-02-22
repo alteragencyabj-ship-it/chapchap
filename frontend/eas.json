@@ -1,26 +1,23 @@
 ﻿{
-  "cli": {
-    "version": ">= 12.0.0"
-  },
-  "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal"
-    },
-    "staging": {
-      "distribution": "internal",
-      "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://artisan-api.onrender.com"
-      }
-    },
-    "production": {
-      "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api.artisan.ci"
-      }
-    }
-  },
-  "submit": {
-    "production": {}
-  }
+    "cli":  {
+                "version":  "\u003e= 12.0.0",
+                "appVersionSource":  "remote"
+            },
+    "build":  {
+                  "development":  {
+                                      "developmentClient":  true,
+                                      "distribution":  "internal"
+                                  },
+                  "preview":  {
+                                  "distribution":  "internal"
+                              },
+                  "production":  {
+
+                                 }
+              },
+    "submit":  {
+                   "production":  {
+
+                                  }
+               }
 }

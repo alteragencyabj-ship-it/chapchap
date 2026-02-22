@@ -18,7 +18,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { COLORS, SERVICE_CATEGORIES } from '../src/config/constants';
+import * as Haptics from 'expo-haptics';
+import { COLORS, SERVICE_CATEGORIES, SHADOWS, SPACING, RADII, TYPOGRAPHY } from '../src/config/constants';
 import api from '../src/services/api';
 
 export default function CreateRequest() {
@@ -48,13 +49,13 @@ export default function CreateRequest() {
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
         });
-        
+
         // Reverse geocoding to get address
         const addresses = await Location.reverseGeocodeAsync({
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
         });
-        
+
         if (addresses[0]) {
           const addr = addresses[0];
           setAddress(`${addr.street || ''}, ${addr.city || ''}, ${addr.country || ''}`.trim());
@@ -69,7 +70,7 @@ export default function CreateRequest() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission refusée', 'Nous avons besoin d\'accéder à vos photos');
+        Alert.alert('Permission refusee', 'Nous avons besoin d\'acceder a vos photos');
         return;
       }
 
@@ -92,7 +93,7 @@ export default function CreateRequest() {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission refusée', 'Nous avons besoin d\'accéder à votre caméra');
+        Alert.alert('Permission refusee', 'Nous avons besoin d\'acceder a votre camera');
         return;
       }
 
@@ -115,11 +116,11 @@ export default function CreateRequest() {
 
   const handleNext = () => {
     if (step === 1 && !serviceType) {
-      Alert.alert('Erreur', 'Veuillez sélectionner un service');
+      Alert.alert('Erreur', 'Veuillez selectionner un service');
       return;
     }
     if (step === 2 && !description.trim()) {
-      Alert.alert('Erreur', 'Veuillez décrire votre besoin');
+      Alert.alert('Erreur', 'Veuillez decrire votre besoin');
       return;
     }
     if (step === 4 && !address.trim()) {
@@ -131,10 +132,12 @@ export default function CreateRequest() {
 
   const handleSubmit = async () => {
     if (!location) {
-      Alert.alert('Erreur', 'Localisation non disponible');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Localisation requise', 'Veuillez activer la localisation pour continuer.');
       return;
     }
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
     try {
       await api.post('/requests', {
@@ -149,7 +152,8 @@ export default function CreateRequest() {
         budget: budget ? parseFloat(budget) : null,
       });
 
-      Alert.alert('Succès', 'Votre demande a été créée !', [
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Demande envoyee !', 'Votre demande a ete creee avec succes. Un artisan vous contactera bientot.', [
         { text: 'OK', onPress: () => router.replace('/(tabs)/my-requests') },
       ]);
     } catch (error: any) {
@@ -173,7 +177,8 @@ export default function CreateRequest() {
                     styles.serviceCard,
                     serviceType === service.id && styles.serviceCardActive,
                   ]}
-                  onPress={() => setServiceType(service.id)}
+                  onPress={() => { Haptics.selectionAsync(); setServiceType(service.id); }}
+                  activeOpacity={0.7}
                 >
                   <Ionicons
                     name={service.icon as any}
@@ -197,10 +202,11 @@ export default function CreateRequest() {
       case 2:
         return (
           <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Décrivez votre besoin</Text>
+            <Text style={styles.stepTitle}>Decrivez votre besoin</Text>
             <TextInput
               style={styles.textArea}
-              placeholder="Décrivez en détail ce dont vous avez besoin..."
+              placeholder="Decrivez en detail ce dont vous avez besoin..."
+              placeholderTextColor={COLORS.textLight}
               value={description}
               onChangeText={setDescription}
               multiline
@@ -214,15 +220,15 @@ export default function CreateRequest() {
         return (
           <View style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Ajoutez des photos</Text>
-            <Text style={styles.stepSubtitle}>Les photos aident les artisans à mieux comprendre</Text>
-            
+            <Text style={styles.stepSubtitle}>Les photos aident les artisans a mieux comprendre</Text>
+
             <View style={styles.photoActions}>
-              <TouchableOpacity style={styles.photoButton} onPress={takePhoto}>
+              <TouchableOpacity style={styles.photoButton} onPress={takePhoto} activeOpacity={0.7}>
                 <Ionicons name="camera" size={24} color={COLORS.primary} />
                 <Text style={styles.photoButtonText}>Prendre une photo</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.photoButton} onPress={pickImage}>
+
+              <TouchableOpacity style={styles.photoButton} onPress={pickImage} activeOpacity={0.7}>
                 <Ionicons name="images" size={24} color={COLORS.primary} />
                 <Text style={styles.photoButtonText}>Galerie</Text>
               </TouchableOpacity>
@@ -237,7 +243,7 @@ export default function CreateRequest() {
                       style={styles.removePhotoButton}
                       onPress={() => removePhoto(index)}
                     >
-                      <Ionicons name="close-circle" size={24} color={COLORS.danger} />
+                      <Ionicons name="close-circle" size={24} color={COLORS.error} />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -249,18 +255,19 @@ export default function CreateRequest() {
       case 4:
         return (
           <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Où se situe l'intervention ?</Text>
+            <Text style={styles.stepTitle}>Ou se situe l'intervention ?</Text>
             <TextInput
               style={styles.input}
-              placeholder="Adresse complète"
+              placeholder="Adresse complete"
+              placeholderTextColor={COLORS.textLight}
               value={address}
               onChangeText={setAddress}
               multiline
             />
             {location && (
               <View style={styles.locationInfo}>
-                <Ionicons name="location" size={20} color={COLORS.primary} />
-                <Text style={styles.locationText}>Localisation GPS activée</Text>
+                <Ionicons name="location" size={20} color={COLORS.success} />
+                <Text style={styles.locationText}>Localisation GPS activee</Text>
               </View>
             )}
           </View>
@@ -273,6 +280,7 @@ export default function CreateRequest() {
             <TextInput
               style={styles.input}
               placeholder="Ex: 50000"
+              placeholderTextColor={COLORS.textLight}
               value={budget}
               onChangeText={setBudget}
               keyboardType="numeric"
@@ -291,27 +299,35 @@ export default function CreateRequest() {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
+        style={styles.flex}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : router.back()}>
+          <TouchableOpacity
+            onPress={() => step > 1 ? setStep(step - 1) : router.back()}
+            style={styles.backButton}
+            activeOpacity={0.7}
+          >
             <Ionicons name="arrow-back" size={24} color={COLORS.dark} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Nouvelle demande</Text>
-          <View style={{ width: 24 }} />
+          <View style={styles.headerSpacer} />
         </View>
 
-        <View style={styles.progressBar}>
-          <View style={[styles.progress, { width: `${(step / 5) * 100}%` }]} />
+        {/* Step indicator */}
+        <View style={styles.progressBarContainer}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progress, { width: `${(step / 5) * 100}%` }]} />
+          </View>
+          <Text style={styles.stepCounter}>Etape {step}/5</Text>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {renderStep()}
         </ScrollView>
 
         <View style={styles.footer}>
           {step < 5 ? (
-            <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
+            <TouchableOpacity style={styles.nextButton} onPress={handleNext} activeOpacity={0.8}>
               <Text style={styles.nextButtonText}>Suivant</Text>
               <Ionicons name="arrow-forward" size={20} color={COLORS.white} />
             </TouchableOpacity>
@@ -320,11 +336,15 @@ export default function CreateRequest() {
               style={[styles.submitButton, loading && styles.submitButtonDisabled]}
               onPress={handleSubmit}
               disabled={loading}
+              activeOpacity={0.8}
             >
               {loading ? (
                 <ActivityIndicator color={COLORS.white} />
               ) : (
-                <Text style={styles.submitButtonText}>Créer la demande</Text>
+                <>
+                  <Text style={styles.submitButtonText}>Creer la demande</Text>
+                  <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
+                </>
               )}
             </TouchableOpacity>
           )}
@@ -339,30 +359,58 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.white,
   },
+  flex: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 20,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   headerTitle: {
-    fontSize: 18,
+    ...TYPOGRAPHY.h3,
     fontWeight: '600',
-    color: COLORS.dark,
+  },
+  headerSpacer: {
+    width: 44,
+  },
+  progressBarContainer: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+    backgroundColor: COLORS.white,
   },
   progressBar: {
     height: 4,
-    backgroundColor: COLORS.light,
+    backgroundColor: COLORS.neutral100,
+    borderRadius: 2,
+    overflow: 'hidden',
   },
   progress: {
     height: '100%',
     backgroundColor: COLORS.primary,
+    borderRadius: 2,
+  },
+  stepCounter: {
+    ...TYPOGRAPHY.caption,
+    marginTop: SPACING.xs,
+    textAlign: 'right',
   },
   content: {
     flexGrow: 1,
-    padding: 20,
+    padding: SPACING.xl,
   },
   stepContainer: {
     flex: 1,
@@ -371,36 +419,37 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: COLORS.dark,
-    marginBottom: 8,
+    marginBottom: SPACING.sm,
+    lineHeight: 30,
   },
   stepSubtitle: {
-    fontSize: 14,
+    ...TYPOGRAPHY.body,
     color: COLORS.textLight,
-    marginBottom: 24,
+    marginBottom: SPACING['2xl'],
   },
   servicesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: SPACING.md,
+    marginTop: SPACING.lg,
   },
   serviceCard: {
-    width: '48%',
-    backgroundColor: COLORS.light,
-    borderRadius: 16,
-    padding: 20,
+    width: '47%',
+    backgroundColor: COLORS.neutral50,
+    borderRadius: RADII.lg,
+    padding: SPACING.xl,
     alignItems: 'center',
-    gap: 12,
+    gap: SPACING.md,
     borderWidth: 2,
     borderColor: 'transparent',
+    minHeight: 100,
   },
   serviceCardActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
   },
   serviceName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.dark,
+    ...TYPOGRAPHY.label,
     textAlign: 'center',
   },
   serviceNameActive: {
@@ -409,54 +458,58 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: RADII.md,
+    padding: SPACING.lg,
     fontSize: 16,
-    backgroundColor: COLORS.white,
+    color: COLORS.dark,
+    backgroundColor: COLORS.neutral50,
+    marginTop: SPACING.lg,
   },
   textArea: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: RADII.md,
+    padding: SPACING.lg,
     fontSize: 16,
-    backgroundColor: COLORS.white,
+    color: COLORS.dark,
+    backgroundColor: COLORS.neutral50,
     minHeight: 200,
+    marginTop: SPACING.lg,
   },
   photoActions: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
+    gap: SPACING.md,
+    marginBottom: SPACING.xl,
   },
   photoButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    padding: 16,
-    borderRadius: 12,
+    gap: SPACING.sm,
+    padding: SPACING.lg,
+    borderRadius: RADII.md,
     borderWidth: 2,
     borderColor: COLORS.primary,
     borderStyle: 'dashed',
+    minHeight: 56,
   },
   photoButtonText: {
     color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: '600',
+    ...TYPOGRAPHY.label,
   },
   photosContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: SPACING.md,
   },
   photoItem: {
     position: 'relative',
-    marginRight: 12,
+    marginRight: SPACING.md,
   },
   photoImage: {
     width: 120,
     height: 120,
-    borderRadius: 12,
+    borderRadius: RADII.md,
   },
   removePhotoButton: {
     position: 'absolute',
@@ -468,34 +521,35 @@ const styles = StyleSheet.create({
   locationInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: COLORS.light,
-    borderRadius: 8,
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    padding: SPACING.md,
+    backgroundColor: `${COLORS.success}12`,
+    borderRadius: RADII.sm,
   },
   locationText: {
-    fontSize: 14,
+    ...TYPOGRAPHY.body,
     color: COLORS.dark,
   },
   hint: {
-    fontSize: 14,
-    color: COLORS.textLight,
-    marginTop: 8,
+    ...TYPOGRAPHY.caption,
+    marginTop: SPACING.sm,
   },
   footer: {
-    padding: 20,
+    padding: SPACING.xl,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+    backgroundColor: COLORS.white,
   },
   nextButton: {
     flexDirection: 'row',
     backgroundColor: COLORS.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: SPACING.lg,
+    borderRadius: RADII.md,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: SPACING.sm,
+    minHeight: 52,
   },
   nextButtonText: {
     color: COLORS.white,
@@ -503,10 +557,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   submitButton: {
-    backgroundColor: COLORS.secondary,
-    paddingVertical: 16,
-    borderRadius: 12,
+    flexDirection: 'row',
+    backgroundColor: COLORS.success,
+    paddingVertical: SPACING.lg,
+    borderRadius: RADII.md,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    minHeight: 52,
   },
   submitButtonDisabled: {
     opacity: 0.6,

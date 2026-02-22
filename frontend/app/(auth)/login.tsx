@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,18 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../../src/store/authStore';
 import api from '../../src/services/api';
-import { COLORS } from '../../src/config/constants';
+import { COLORS, RADII } from '../../src/config/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login() {
   const router = useRouter();
@@ -27,17 +32,56 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+
+  const validateEmail = useCallback((value: string): boolean => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setEmailError('L\'adresse email est requise.');
+      return false;
+    }
+    if (!EMAIL_REGEX.test(trimmed)) {
+      setEmailError('Format d\'email invalide.');
+      return false;
+    }
+    setEmailError('');
+    return true;
+  }, []);
+
+  const validatePassword = useCallback((value: string): boolean => {
+    if (!value) {
+      setPasswordError('Le mot de passe est requis.');
+      return false;
+    }
+    setPasswordError('');
+    return true;
+  }, []);
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Champs requis', 'Veuillez entrer votre email et mot de passe.');
+    if (submitting) return;
+
+    Keyboard.dismiss();
+
+    const trimmedEmail = email.trim();
+    const isEmailValid = validateEmail(trimmedEmail);
+    const isPasswordValid = validatePassword(password);
+
+    if (!isEmailValid || !isPasswordValid) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     setLoading(true);
+    setSubmitting(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const response = await api.post('/auth/login', {
-        email: email.toLowerCase().trim(),
+        email: trimmedEmail.toLowerCase(),
         password,
       });
 
@@ -46,16 +90,32 @@ export default function Login() {
       setUser(user);
       await AsyncStorage.setItem('user_data', JSON.stringify(user));
 
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
       if (user.role === 'artisan') {
         router.replace('/(tabs)/artisan-home');
       } else {
         router.replace('/(tabs)/home');
       }
     } catch (error: any) {
-      const msg = error.response?.data?.detail || 'Une erreur est survenue';
-      Alert.alert('Erreur', msg);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const status = error.response?.status;
+      let msg: string;
+      if (status === 401 || status === 403) {
+        msg = 'Email ou mot de passe incorrect. Verifiez vos identifiants.';
+      } else if (status === 404) {
+        msg = 'Aucun compte associe a cet email.';
+      } else if (error.code === 'ECONNABORTED') {
+        msg = 'Le serveur met trop de temps a repondre. Reessayez.';
+      } else if (!error.response) {
+        msg = 'Impossible de joindre le serveur. Verifiez votre connexion internet.';
+      } else {
+        msg = error.response?.data?.detail || 'Une erreur inattendue est survenue. Reessayez.';
+      }
+      Alert.alert('Connexion impossible', msg);
     } finally {
       setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -64,91 +124,130 @@ export default function Login() {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
+        style={styles.flex}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={true}
           >
-            <Ionicons name="arrow-back" size={28} color={COLORS.secondary} />
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.back()}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="arrow-back" size={24} color={COLORS.secondary} />
+            </TouchableOpacity>
 
-          <View style={styles.header}>
-            <Text style={styles.title}>Bienvenue.</Text>
-            <Text style={styles.subtitle}>Connectez-vous pour continuer.</Text>
-          </View>
-
-          <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="mail-outline" size={20} color={COLORS.textLight} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Adresse email"
-                  placeholderTextColor={COLORS.textLight}
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
+            <View style={styles.header}>
+              <Text style={styles.title}>Bienvenue.</Text>
+              <Text style={styles.subtitle}>Connectez-vous pour continuer.</Text>
             </View>
 
-            <View style={styles.inputGroup}>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={20} color={COLORS.textLight} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Mot de passe"
-                  placeholderTextColor={COLORS.textLight}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.eyeIcon}
-                >
-                  <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={COLORS.textLight}
+            <View style={styles.form}>
+              <View style={styles.inputGroup}>
+                <View style={[styles.inputWrapper, emailError ? styles.inputWrapperError : null]}>
+                  <Ionicons name="mail-outline" size={20} color={emailError ? COLORS.error : COLORS.textLight} style={styles.inputIcon} />
+                  <TextInput
+                    ref={emailRef}
+                    style={styles.input}
+                    placeholder="Adresse email"
+                    placeholderTextColor={COLORS.neutral400}
+                    value={email}
+                    onChangeText={(text) => {
+                      setEmail(text);
+                      if (emailError) validateEmail(text);
+                    }}
+                    onBlur={() => { if (email) validateEmail(email); }}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoFocus
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordRef.current?.focus()}
+                    blurOnSubmit={false}
+                    editable={!loading}
+                    textContentType="emailAddress"
+                    autoComplete="email"
                   />
+                </View>
+                {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
+              </View>
+
+              <View style={styles.inputGroup}>
+                <View style={[styles.inputWrapper, passwordError ? styles.inputWrapperError : null]}>
+                  <Ionicons name="lock-closed-outline" size={20} color={passwordError ? COLORS.error : COLORS.textLight} style={styles.inputIcon} />
+                  <TextInput
+                    ref={passwordRef}
+                    style={styles.input}
+                    placeholder="Mot de passe"
+                    placeholderTextColor={COLORS.neutral400}
+                    value={password}
+                    onChangeText={(text) => {
+                      setPassword(text);
+                      if (passwordError) validatePassword(text);
+                    }}
+                    onBlur={() => { if (password) validatePassword(password); }}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    returnKeyType="go"
+                    onSubmitEditing={handleLogin}
+                    editable={!loading}
+                    textContentType="password"
+                    autoComplete="password"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeIcon}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={20}
+                      color={COLORS.textLight}
+                    />
+                  </TouchableOpacity>
+                </View>
+                {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
+              </View>
+
+              <TouchableOpacity
+                style={styles.forgotPassword}
+                onPress={() => Alert.alert('Info', 'Fonctionnalite bientot disponible.')}
+                hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
+              >
+                <Text style={styles.forgotPasswordText}>Mot de passe oublie ?</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.loginButton, loading && styles.disabledButton]}
+                onPress={handleLogin}
+                disabled={loading || submitting}
+                activeOpacity={0.8}
+              >
+                {loading ? (
+                  <ActivityIndicator color={COLORS.white} size="small" />
+                ) : (
+                  <Text style={styles.loginButtonText}>Connexion</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>Pas de compte ? </Text>
+                <TouchableOpacity
+                  onPress={() => router.push('/(auth)/register')}
+                  disabled={loading}
+                  style={styles.footerLink}
+                  hitSlop={{ top: 8, bottom: 8, left: 4, right: 16 }}
+                >
+                  <Text style={styles.linkText}>Creer un compte</Text>
                 </TouchableOpacity>
               </View>
             </View>
-
-            <TouchableOpacity
-              style={styles.forgotPassword}
-              onPress={() => Alert.alert('Info', 'Fonctionnalité bientôt disponible.')}
-            >
-              <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.loginButton, loading && styles.disabledButton]}
-              onPress={handleLogin}
-              disabled={loading}
-              activeOpacity={0.8}
-            >
-              {loading ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.loginButtonText}>Connexion</Text>
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>Pas de compte ? </Text>
-              <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
-                <Text style={styles.linkText}>Créer un compte</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -159,17 +258,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.white,
   },
+  flex: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 32,
     paddingTop: 20,
+    paddingBottom: 40,
   },
   backButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
+    borderRadius: RADII.sm,
     justifyContent: 'center',
-    marginBottom: 32,
-    marginLeft: -8,
+    alignItems: 'flex-start',
+    marginBottom: 24,
+    marginLeft: -4,
   },
   header: {
     marginBottom: 48,
@@ -186,23 +291,29 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: COLORS.textLight,
     fontWeight: '500',
+    lineHeight: 26,
   },
   form: {
-    gap: 24,
+    gap: 20,
   },
   inputGroup: {
-    gap: 8,
+    gap: 6,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.light,
-    borderRadius: 20, // Cuberto style: Soft roundness
+    borderRadius: RADII.xl,
     paddingHorizontal: 20,
-    height: 64,
+    height: 60,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  inputWrapperError: {
+    borderColor: COLORS.error,
   },
   inputIcon: {
-    marginRight: 16,
+    marginRight: 14,
   },
   input: {
     flex: 1,
@@ -212,10 +323,22 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   eyeIcon: {
-    padding: 10,
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: COLORS.error,
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 4,
+    marginLeft: 20,
   },
   forgotPassword: {
     alignSelf: 'flex-end',
+    minHeight: 44,
+    justifyContent: 'center',
   },
   forgotPasswordText: {
     color: COLORS.textLight,
@@ -224,11 +347,11 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     backgroundColor: COLORS.primary,
-    height: 64,
-    borderRadius: 32,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
+    marginTop: 8,
     shadowColor: COLORS.primary,
     shadowOffset: {
       width: 0,
@@ -249,13 +372,17 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 32,
+    marginTop: 24,
     alignItems: 'center',
   },
   footerText: {
     color: COLORS.textLight,
     fontSize: 15,
     fontWeight: '500',
+  },
+  footerLink: {
+    minHeight: 44,
+    justifyContent: 'center',
   },
   linkText: {
     color: COLORS.primary,

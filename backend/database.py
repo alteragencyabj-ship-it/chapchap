@@ -54,6 +54,9 @@ async def connect_to_mongo():
     await db.users.create_index([("location", "2dsphere")])
     await db.users.create_index("admin_role")
     await db.users.create_index("status")
+    await db.users.create_index("referral_id", unique=True, sparse=True)
+    await db.users.create_index("referred_by_artisan_id")
+    await db.users.create_index("affiliated_clients_count")
 
     # Service requests
     await db.service_requests.create_index("client_id")
@@ -61,6 +64,7 @@ async def connect_to_mongo():
     await db.service_requests.create_index("artisan_id")
     await db.service_requests.create_index("status")
     await db.service_requests.create_index([("location", "2dsphere")])
+    await db.service_requests.create_index("financials_applied_at")
 
     # Messages
     await db.messages.create_index([("sender_id", 1), ("receiver_id", 1)])
@@ -71,7 +75,11 @@ async def connect_to_mongo():
     # ===== NEW INDEXES =====
 
     # Conversations
-    await db.conversations.create_index("request_id", unique=True)
+    try:
+        await db.conversations.drop_index("request_id_1")
+    except Exception:
+        pass
+    await db.conversations.create_index("request_id", unique=True, sparse=True)
     await db.conversations.create_index("participants")
     await db.conversations.create_index("last_message_at")
 
@@ -123,7 +131,37 @@ async def connect_to_mongo():
 
     # Credit/commission history
     await db.mission_transactions.create_index([("artisan_id", 1), ("created_at", -1)])
+    await db.mission_transactions.create_index([("booking_id", 1), ("artisan_id", 1)])
     await db.commission_payments.create_index([("artisan_id", 1), ("created_at", -1)])
+    await db.wallet_transactions.create_index([("artisanId", 1), ("createdAt", -1)])
+    await db.wallet_transactions.create_index(
+        [("missionId", 1)],
+        unique=True,
+        partialFilterExpression={"type": "MISSION_COMPLETED"},
+    )
+    await db.wallet_transactions.create_index(
+        [("paymentId", 1)],
+        unique=True,
+        partialFilterExpression={"type": "REPAYMENT"},
+    )
+    await db.wallet_transactions.create_index(
+        [("settlementId", 1)],
+        unique=True,
+        partialFilterExpression={"type": "COMMISSION_SETTLEMENT"},
+    )
+
+    # Client saved addresses
+    await db.client_addresses.create_index([("client_id", 1), ("address_normalized", 1)], unique=True)
+    await db.client_addresses.create_index([("client_id", 1), ("is_default", -1), ("last_used_at", -1)])
+
+    # Artisan profiles (rich profile collection)
+    await db.artisan_profiles.create_index("user_id", unique=True)
+    await db.artisan_profiles.create_index("metier_principal")
+    await db.artisan_profiles.create_index("ville")
+    await db.artisan_profiles.create_index("specialites")
+    await db.artisan_profiles.create_index("score_confiance")
+    await db.artisan_profiles.create_index("affiliated_clients_count")
+    await db.artisan_profiles.create_index([("ville", 1), ("metier_principal", 1)])
 
     print("[OK] Connected to MongoDB")
 

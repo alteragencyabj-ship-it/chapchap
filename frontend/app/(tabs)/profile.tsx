@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,28 +8,54 @@ import {
   TouchableOpacity,
   Alert,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../../src/store/authStore';
-import { COLORS } from '../../src/config/constants';
+import { COLORS, SHADOWS, SPACING, RADII, TYPOGRAPHY } from '../../src/config/constants';
+import { useSyncStore } from '../../src/store/syncStore';
+import { disconnectSocket } from '../../src/services/socket';
 
 export default function Profile() {
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user, logout, refreshMe } = useAuthStore();
+  const syncVersion = useSyncStore((s) => s.syncVersion);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    if (user?.role === 'artisan') {
+      refreshMe();
+    }
+  }, [syncVersion, user?.role, refreshMe]);
 
   const handleLogout = () => {
+    if (loggingOut) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
-      'Déconnexion',
-      'Êtes-vous sûr de vouloir vous déconnecter ?',
+      'Deconnexion',
+      'Voulez-vous vraiment vous deconnecter ?',
       [
         { text: 'Annuler', style: 'cancel' },
         {
-          text: 'Déconnexion',
+          text: 'Se deconnecter',
           style: 'destructive',
           onPress: async () => {
-            await logout();
-            router.replace('/(auth)/welcome');
+            setLoggingOut(true);
+            try {
+              // Disconnect socket before clearing auth
+              disconnectSocket();
+              // Clear sync store
+              useSyncStore.getState().bumpSync('logout');
+              // Clear auth (token + user from AsyncStorage)
+              await logout();
+            } catch (e) {
+              console.error('Logout error:', e);
+            } finally {
+              setLoggingOut(false);
+              router.replace('/(auth)/welcome');
+            }
           },
         },
       ]
@@ -40,7 +66,7 @@ export default function Profile() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
       
-      <ScrollView>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
             <View style={styles.avatar}>
@@ -75,6 +101,52 @@ export default function Profile() {
           </View>
         )}
 
+        {user?.role === 'artisan' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Profil artisan</Text>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push('/edit-profile-artisan')}
+            >
+              <Ionicons name="create-outline" size={24} color={COLORS.dark} />
+              <Text style={styles.menuText}>Completer mon profil</Text>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textLight} />
+            </TouchableOpacity>
+
+            {user._id ? (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() =>
+                  router.push({
+                    pathname: '/artisan-profile',
+                    params: { id: user._id },
+                  })
+                }
+              >
+                <Ionicons name="eye-outline" size={24} color={COLORS.dark} />
+                <Text style={styles.menuText}>Voir ma fiche publique</Text>
+                <Ionicons name="chevron-forward" size={20} color={COLORS.textLight} />
+              </TouchableOpacity>
+            ) : null}
+
+            <View style={styles.domainsCard}>
+              <Text style={styles.domainsTitle}>Mes domaines de specialite</Text>
+              <View style={styles.domainsWrap}>
+                {(user?.specialty_domains || user?.specialties || []).length > 0 ? (
+                  (user?.specialty_domains || user?.specialties || []).map((domain) => (
+                    <View key={domain} style={styles.domainChip}>
+                      <Text style={styles.domainChipText}>{domain}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.domainsEmpty}>Aucun domaine configure</Text>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Informations</Text>
           
@@ -101,6 +173,20 @@ export default function Profile() {
             )}
           </View>
         </View>
+
+        {user?.role === 'admin' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Administration</Text>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push('/admin-settle')}
+            >
+              <Ionicons name="shield-checkmark-outline" size={24} color={COLORS.iconSteel} />
+              <Text style={styles.menuText}>Regulariser les commissions</Text>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textLight} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.section}>
           <TouchableOpacity style={styles.menuItem}>
@@ -141,15 +227,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.light,
   },
+  scrollContent: {
+    paddingBottom: SPACING['3xl'],
+  },
   header: {
     backgroundColor: COLORS.white,
-    padding: 24,
+    paddingHorizontal: SPACING['2xl'],
+    paddingTop: SPACING['2xl'],
+    paddingBottom: SPACING['2xl'],
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   avatarContainer: {
-    marginBottom: 16,
+    marginBottom: SPACING.lg,
   },
   avatar: {
     width: 100,
@@ -158,98 +249,135 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    ...SHADOWS.md,
   },
   name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.dark,
-    marginBottom: 4,
+    ...TYPOGRAPHY.h2,
+    marginBottom: SPACING.xs,
   },
   email: {
+    ...TYPOGRAPHY.caption,
     fontSize: 14,
-    color: COLORS.textLight,
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   roleBadge: {
-    backgroundColor: COLORS.primary + '20',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 16,
+    backgroundColor: COLORS.primary + '15',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADII.pill,
   },
   roleText: {
     color: COLORS.primary,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   statsContainer: {
     flexDirection: 'row',
-    padding: 16,
-    gap: 12,
+    padding: SPACING.lg,
+    gap: SPACING.md,
   },
   statCard: {
     flex: 1,
     backgroundColor: COLORS.white,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: RADII.lg,
+    padding: SPACING.xl,
     alignItems: 'center',
-    gap: 8,
+    gap: SPACING.sm,
+    ...SHADOWS.sm,
   },
   statValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: COLORS.dark,
+    ...TYPOGRAPHY.h1,
   },
   statLabel: {
-    fontSize: 12,
-    color: COLORS.textLight,
+    ...TYPOGRAPHY.caption,
   },
   section: {
-    padding: 16,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.dark,
-    marginBottom: 12,
-    marginLeft: 4,
+    marginBottom: SPACING.md,
+    marginLeft: SPACING.xs,
   },
   infoCard: {
     backgroundColor: COLORS.white,
-    borderRadius: 16,
-    padding: 16,
-    gap: 16,
+    borderRadius: RADII.lg,
+    padding: SPACING.lg,
+    gap: SPACING.lg,
+    ...SHADOWS.sm,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: SPACING.md,
+    minHeight: 28,
   },
   infoText: {
+    ...TYPOGRAPHY.body,
     fontSize: 14,
-    color: COLORS.dark,
     flex: 1,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.white,
-    padding: 16,
-    marginBottom: 8,
-    borderRadius: 12,
-    gap: 12,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 14,
+    marginBottom: SPACING.sm,
+    borderRadius: RADII.md,
+    gap: SPACING.md,
+    minHeight: 52,
+    ...SHADOWS.sm,
   },
   menuText: {
     flex: 1,
     fontSize: 16,
+    fontWeight: '400',
     color: COLORS.dark,
   },
   logoutButton: {
-    marginTop: 8,
+    marginTop: SPACING.sm,
+  },
+  domainsCard: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.white,
+    borderRadius: RADII.md,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  domainsTitle: {
+    ...TYPOGRAPHY.label,
+    fontSize: 14,
+    marginBottom: SPACING.md,
+  },
+  domainsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  domainChip: {
+    backgroundColor: COLORS.neutral100,
+    borderRadius: RADII.pill,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  domainChipText: {
+    color: COLORS.dark,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  domainsEmpty: {
+    ...TYPOGRAPHY.caption,
+    fontSize: 13,
   },
   version: {
     textAlign: 'center',
-    color: COLORS.textLight,
-    fontSize: 12,
-    padding: 20,
+    ...TYPOGRAPHY.caption,
+    paddingVertical: SPACING.xl,
   },
 });
